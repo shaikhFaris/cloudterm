@@ -1,0 +1,15 @@
+{
+  "name": "@cloudterm/api-gateway",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --minify",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "dev": "bun --watch src/index.ts",
+    "start": "bun dist/index.js",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  color: #e8eef0;
+  background: #101820;
+  font-family: 'Space Grotesk', sans-serif;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+.shell { min-height: 100vh; background: radial-gradient(circle at 85% 15%, #254750 0, transparent 30%), #101820; }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 28px clamp(24px, 7vw, 100px); border-bottom: 1px solid #36515a; }
+.mark { display: grid; place-items: center; width: 38px; height: 38px; color: #101820; background: #d8f36b; font: 500 13px 'DM Mono', monospace; }
+.brand { font-size: 18px; font-weight: 600; }
+.environment { margin-left: auto; color: #91a8ad; font: 12px 'DM Mono', monospace; letter-spacing: 1px; }
+.hero { max-width: 960px; margin: 0 auto; padding: clamp(80px, 14vh, 160px) 24px 80px; }
+.eyebrow { color: #d8f36b; font: 500 12px 'DM Mono', monospace; letter-spacing: 2px; text-transform: uppercase; }
+h1 { max-width: 760px; margin: 22px 0; font-size: clamp(42px, 7vw, 84px); line-height: .98; letter-spacing: -3px; }
+.lede { color: #a9bec2; font-size: 18px; }
+.service-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 72px; }
+.service { display: flex; gap: 14px; align-items: flex-start; padding: 20px; border: 1px solid #36515a; background: #17252c; }
+.status-dot { width: 9px; height: 9px; margin-top: 7px; border-radius: 50%; background: #d8f36b; box-shadow: 0 0 14px #d8f36b; }
+h2 { margin: 0; font-size: 15px; }
+.service p { margin: 6px 0 0; color: #91a8ad; font: 12px 'DM Mono', monospace; }
+@media (max-width: 680px) { .environment { display: none; } .service-grid { grid-template-columns: 1fr; margin-top: 48px; } h1 { letter-spacing: -1.5px; } }
