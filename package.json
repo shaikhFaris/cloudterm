@@ -1,21 +1,11 @@
 {
   "name": "cloudterm",
-  "private": true,
-  "packageManager": "bun@latest",
+  "version": "1.0.0",
+  "private": "true",
   "workspaces": [
-    "services/*"
+    "packages/*"
   ],
   "scripts": {
-    "build": "turbo run build",
-    "check": "turbo run check",
-    "dev": "turbo run dev --parallel",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "test": "turbo run test"
-  },
-  "devDependencies": {
-    "prettier": "latest",
-    "turbo": "latest",
-    "typescript": "latest"
+    "dev:api-gateway": "bun --watch ./packages/api-gateway/src/index.ts"
   }
 }

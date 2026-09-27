@@ -1,0 +1,13 @@
+{
+  "name": "shared",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^18.0.4",
+    "drizzle-orm": "^0.45.3",
+    "pg": "^8.23.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
+  }
+}
