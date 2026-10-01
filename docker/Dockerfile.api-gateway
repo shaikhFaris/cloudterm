@@ -1,0 +1,16 @@
+FROM oven/bun:1 AS base
+WORKDIR /app
+
+COPY package.json bun.lock ./
+
+COPY packages/api-gateway/package.json packages/api-gateway/package.json
+COPY packages/shared/package.json packages/shared/package.json
+
+RUN bun install --frozen-lockfile --filter=api-gateway --filter=shared
+
+COPY packages/api-gateway packages/api-gateway
+COPY packages/shared packages/shared
+WORKDIR /app/packages/api-gateway
+EXPOSE 3500
+
+ENTRYPOINT [ "bun", "run", "src/index.ts" ]

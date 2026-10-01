@@ -1,0 +1,41 @@
+services:
+  api-gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api-gateway
+    container_name: api-gateway
+    env_file:
+      - .env
+    environment:
+      DB_URL: postgres://postgres:pass123@db:5432/mydb
+    ports:
+      - '3500:3500'
+    depends_on:
+      - redis
+      - db
+    networks:
+      - cloudterm-network
+
+  redis:
+    image: redis/redis-stack-server
+    container_name: redis-stack-container
+    ports:
+      - '8001:8001'
+    networks:
+      - cloudterm-network
+
+  db:
+    image: postgres
+    container_name: cloudterm-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: pass123
+      POSTGRES_DB: mydb
+    ports:
+      - '5431:5432'
+    networks:
+      - cloudterm-network
+
+networks:
+  cloudterm-network:
+    driver: bridge
