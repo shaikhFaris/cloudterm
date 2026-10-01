@@ -8,6 +8,8 @@ services:
       - .env
     environment:
       DB_URL: postgres://postgres:pass123@db:5432/mydb
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     ports:
       - '3500:3500'
     depends_on:
@@ -17,10 +19,11 @@ services:
       - cloudterm-network
 
   redis:
-    image: redis/redis-stack-server
+    image: redis/redis-stack
     container_name: redis-stack-container
     ports:
       - '8001:8001'
+      - '6379:6379'
     networks:
       - cloudterm-network
 

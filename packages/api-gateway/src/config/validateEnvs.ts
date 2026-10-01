@@ -12,6 +12,8 @@ const envSchema = z.object({
   JWT_REFRESH_TOKEN_SECRET: z.string(),
   JWT_REFRESH_TOKEN_TIME_IN_MS: z.coerce.number(),
   COOKIE_DOMAIN: z.string(),
+  REDIS_HOST: z.string(),
+  REDIS_PORT: z.coerce.number().default(6379),
 });
 
 const res = envSchema.safeParse(process.env);

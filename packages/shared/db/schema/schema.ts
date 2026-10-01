@@ -1,6 +1,6 @@
 import { pgEnum, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
-export const workspaceStatusEnum = pgEnum('workspace_status', ['loading', 'running', 'deleted']);
+export const workspaceStatusEnum = pgEnum('workspace_status', ['queued', 'running', 'deleted']);
 
 export const usersTable = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
