@@ -1,5 +1,5 @@
 import { db } from 'shared/db/drizzle';
-import { labQueue } from '../../config/lab-queue';
+import { labQueue } from 'shared/redis/Queue';
 import { insertWorkspace } from './lab-repository';
 import type { Job, JobProgress } from 'bullmq';
 

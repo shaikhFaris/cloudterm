@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-manager-deployment
+  labels:
+    app: k8s-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-manager
+  template:
+    metadata:
+      labels:
+        app: k8s-manager
+    spec:
+      serviceAccountName: cloudterm-worker
+      containers:
+      - name: k8s-manager-container
+        image: k8s-manager:0.1
+        # ports:
+        # - containerPort: 80
+        env:
+          - name: REDIS_HOST
+            value: redis
+          - name: REDIS_PORT
+            value: "6379"
+          - name: NODE_EXTRA_CA_CERTS
+            value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
