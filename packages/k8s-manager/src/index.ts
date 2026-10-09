@@ -10,8 +10,8 @@ const worker = new Worker(
       return;
     }
     const userId = job.data.userId as string;
-    await listPods();
     console.log(job.data);
+    await listPods();
   },
   {
     connection: {

@@ -9,14 +9,7 @@ export async function listPods() {
   try {
     const res = await k8sApi.listNamespacedPod({ namespace: 'cloudterm' });
     console.log(res.items);
-
-    // console.log(
-    //   'Pods:',
-    //   res.items.map((pod) => pod.metadata?.name),
-    // );
   } catch (err) {
     console.error('Error:', err);
   }
 }
-
-listPods();
