@@ -22,7 +22,7 @@ spec:
         # - containerPort: 80
         env:
           - name: REDIS_HOST
-            value: redis
+            value: redis-stack-container
           - name: REDIS_PORT
             value: "6379"
           - name: NODE_EXTRA_CA_CERTS

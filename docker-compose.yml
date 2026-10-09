@@ -18,18 +18,6 @@ services:
     networks:
       - cloudterm-network
 
-  k8s-manager:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.k8s-manager
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-    depends_on:
-      - redis
-    networks:
-      - cloudterm-network
-
   redis:
     image: redis/redis-stack
     container_name: redis-stack-container
@@ -50,7 +38,10 @@ services:
       - '5431:5432'
     networks:
       - cloudterm-network
+      - kind
 
 networks:
   cloudterm-network:
     driver: bridge
+  kind:
+    external: true
