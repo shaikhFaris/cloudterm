@@ -18,6 +18,18 @@ services:
     networks:
       - cloudterm-network
 
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.k8s-manager
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - redis
+    networks:
+      - cloudterm-network
+
   redis:
     image: redis/redis-stack
     container_name: redis-stack-container
