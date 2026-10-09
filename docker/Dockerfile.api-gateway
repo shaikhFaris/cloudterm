@@ -10,6 +10,8 @@ RUN bun install --frozen-lockfile --filter=api-gateway --filter=shared
 
 COPY packages/api-gateway packages/api-gateway
 COPY packages/shared packages/shared
+COPY packages/k8s-manager packages/k8s-manager
+
 WORKDIR /app/packages/api-gateway
 EXPOSE 3500
 

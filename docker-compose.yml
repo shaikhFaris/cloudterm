@@ -18,7 +18,7 @@ services:
     networks:
       - cloudterm-network
 
-  worker:
+  k8s-manager:
     build:
       context: .
       dockerfile: docker/Dockerfile.k8s-manager

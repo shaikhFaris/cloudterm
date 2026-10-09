@@ -7,7 +7,7 @@ const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
 
 export async function listPods() {
   try {
-    const res = await k8sApi.listNamespacedPod({ namespace: 'default' });
+    const res = await k8sApi.listNamespacedPod({ namespace: 'cloudterm' });
     console.log(res.items);
 
     // console.log(

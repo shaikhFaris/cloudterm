@@ -1,0 +1,18 @@
+FROM oven/bun:1 AS base
+WORKDIR /app
+
+COPY package.json bun.lock ./
+
+COPY packages/k8s-manager/package.json packages/k8s-manager/package.json
+COPY packages/shared/package.json packages/shared/package.json
+
+RUN bun install --frozen-lockfile --filter=k8s-manager --filter=shared 
+
+COPY packages/k8s-manager packages/k8s-manager
+COPY packages/shared packages/shared
+COPY packages/api-gateway packages/api-gateway
+
+
+WORKDIR /app/packages/k8s-manager
+
+ENTRYPOINT ["bun", "run", "src/index.ts"]
