@@ -38,7 +38,6 @@ services:
       - '5431:5432'
     networks:
       - cloudterm-network
-      - kind
 
 networks:
   cloudterm-network:

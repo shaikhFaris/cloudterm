@@ -1,7 +1,8 @@
 import { Worker, Job } from 'bullmq';
 import { QUEUE_NAME } from 'shared/const/redis';
 import { env } from './env';
-import { listPods } from './k8s';
+import { createPod, startCleanupWorker } from './k8s';
+// import { listPods } from './k8s';
 
 const worker = new Worker(
   QUEUE_NAME,
@@ -9,9 +10,14 @@ const worker = new Worker(
     if (!job || !job.data) {
       return;
     }
-    const userId = job.data.userId as string;
     console.log(job.data);
-    await listPods();
+    const userId = job.data.userId as string;
+    const workspaceId = job.data.workspaceId as string;
+    if (!userId || !workspaceId) {
+      console.error('UserID or workspaceId not found');
+      return;
+    }
+    await createPod(userId, workspaceId);
   },
   {
     connection: {
@@ -31,3 +37,5 @@ worker.on('failed', (job, error) => {
 worker.on('error', (err) => {
   console.error(err);
 });
+
+void startCleanupWorker(10_000);

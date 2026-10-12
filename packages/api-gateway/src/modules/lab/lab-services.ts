@@ -7,17 +7,18 @@ export const createLab = async (userId: string) => {
   let job: Job<any, any, string, JobProgress> | undefined;
   try {
     return db.transaction(async (tx) => {
+      const res = await insertWorkspace(tx, userId);
+      if (!res) throw new Error('Internal Error in k8s manager');
+
       job = await labQueue.add(
         'create-lab',
-        { userId },
+        { userId, workspaceId: res.id },
         {
           attempts: 3,
           removeOnComplete: true,
           removeOnFail: false,
         },
       );
-
-      await insertWorkspace(tx, userId);
 
       return {
         jobId: job.id,
