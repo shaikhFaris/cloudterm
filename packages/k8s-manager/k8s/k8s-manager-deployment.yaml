@@ -21,6 +21,8 @@ spec:
         # ports:
         # - containerPort: 80
         env:
+          - name: DB_URL
+            value: postgres://postgres:pass123@cloudterm-db:5432/mydb
           - name: REDIS_HOST
             value: redis-stack-container
           - name: REDIS_PORT

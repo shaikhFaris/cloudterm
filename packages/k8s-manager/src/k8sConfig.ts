@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 // ----- configuration --------------------------------------------------------
 const SA_NAME = process.env.K8S_SA_NAME || 'cloudterm-worker';
-const NAMESPACE = process.env.K8S_NAMESPACE || 'cloudterm';
+export const NAMESPACE = process.env.K8S_NAMESPACE || 'cloudterm';
 const TOKEN_REFRESH_MIN = Number(process.env.K8S_TOKEN_REFRESH_MIN || 50);
 
 // ----- helpers --------------------------------------------------------------
