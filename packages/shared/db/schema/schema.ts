@@ -5,7 +5,8 @@ export const workspaceStatusEnum = pgEnum('workspace_status', ['queued', 'runnin
 export const usersTable = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: varchar({ length: 255 }).notNull().unique(),
-  password: varchar({ length: 255 }).notNull(),
+  password: varchar({ length: 255 }),
+  githubId: varchar('github_id', { length: 255 }).unique(),
   createdAt: timestamp('created_at', {
     withTimezone: true,
   })

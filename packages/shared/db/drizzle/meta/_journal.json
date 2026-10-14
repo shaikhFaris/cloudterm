@@ -36,6 +36,13 @@
       "when": 1791796167148,
       "tag": "0004_noisy_kabuki",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791956353395,
+      "tag": "0005_github_oauth",
+      "breakpoints": true
     }
   ]
 }

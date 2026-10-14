@@ -10,7 +10,9 @@ const app: Express = express();
 
 app.use(cors());
 app.use(express.json());
-app.use(morgan('dev'));
+// OAuth callback query strings contain authorization codes and state.
+morgan.token('safe-path', (req) => (req.url ?? '').split('?')[0] ?? '/');
+app.use(morgan(':method :safe-path :status :response-time ms'));
 app.use(CookieParser());
 
 app.use('/api/v1', v1Routes);
