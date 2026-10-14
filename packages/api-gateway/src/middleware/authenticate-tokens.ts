@@ -10,12 +10,20 @@ export const authenticateTokens: RequestHandler = (req, res, next) => {
     const refreshToken = req.cookies.refreshToken;
     if (!accessToken || !refreshToken) throw new ApiError(401, 'User not authenticated.');
 
-    const decodedAccessToken = jwt.verify(accessToken, env.JWT_ACCESS_TOKEN_SECRET) as JWTPayload;
+    const decodedAccessToken = jwt.verify(accessToken, env.JWT_ACCESS_TOKEN_SECRET, {
+      algorithms: ['HS256'],
+    }) as JWTPayload;
 
     const decodedRefreshToken = jwt.verify(
       refreshToken,
       env.JWT_REFRESH_TOKEN_SECRET,
+      { algorithms: ['HS256'] },
     ) as JWTPayload;
+
+    if (typeof decodedAccessToken.id !== 'string' || !decodedAccessToken.id ||
+      decodedAccessToken.id !== decodedRefreshToken.id) {
+      throw new ApiError(401, 'Invalid tokens.');
+    }
 
     req.user = {
       id: decodedAccessToken.id,

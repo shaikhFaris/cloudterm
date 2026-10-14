@@ -14,6 +14,7 @@ import bcrypt from 'bcrypt';
 import jwt, { JsonWebTokenError } from 'jsonwebtoken';
 import { generateToken, type JWTPayload } from 'shared/utils/jwt';
 import { env } from '../../config/validateEnvs';
+import type { Transaction } from '../../types/db';
 
 export const signIn = async (email: string, password: string) => {
   await db.transaction(async (tx) => {
@@ -33,34 +34,38 @@ export const logIn = async (email: string, password: string) => {
     const user = await findUserByEmail(tx, email);
 
     // user does not exist
-    if (!user) throw new ApiError(400, 'Authentication failed');
+    if (!user?.password) throw new ApiError(400, 'Authentication failed');
 
     // check password
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
     if (!isPasswordCorrect) throw new ApiError(400, 'Authentication failed');
 
-    const accessToken = await generateToken(
-      {
-        id: user.id,
-      },
-      env.JWT_ACCESS_TOKEN_SECRET,
-      env.JWT_ACCESS_TOKEN_TIME_IN_MS,
-    );
-    const refreshToken = await generateToken(
-      {
-        id: user.id,
-      },
-      env.JWT_REFRESH_TOKEN_SECRET,
-      env.JWT_REFRESH_TOKEN_TIME_IN_MS,
-    );
-    // store/update refresh token in db
-    await insertOrUpdateRefreshToken(tx, refreshToken, user.id);
-    const accountInfo = {
-      id: user.id,
-      email: user.email,
-    };
-    return { accessToken, refreshToken, accountInfo };
+    return createSession(tx, user);
   });
+};
+
+export const createSession = async (tx: Transaction, user: typeof usersTable.$inferSelect) => {
+  const accessToken = await generateToken(
+    {
+      id: user.id,
+    },
+    env.JWT_ACCESS_TOKEN_SECRET,
+    env.JWT_ACCESS_TOKEN_TIME_IN_MS,
+  );
+  const refreshToken = await generateToken(
+    {
+      id: user.id,
+    },
+    env.JWT_REFRESH_TOKEN_SECRET,
+    env.JWT_REFRESH_TOKEN_TIME_IN_MS,
+  );
+  // store/update refresh token in db
+  await insertOrUpdateRefreshToken(tx, refreshToken, user.id);
+  const accountInfo = {
+    id: user.id,
+    email: user.email,
+  };
+  return { accessToken, refreshToken, accountInfo };
 };
 
 export const logout = async (refreshToken: string) => {
@@ -72,7 +77,12 @@ export const refresh = async (refreshToken: string) => {
     const decodedRefreshToken = jwt.verify(
       refreshToken,
       env.JWT_REFRESH_TOKEN_SECRET,
+      { algorithms: ['HS256'] },
     ) as JWTPayload;
+
+    if (typeof decodedRefreshToken.id !== 'string' || !decodedRefreshToken.id) {
+      throw new ApiError(401, 'Invalid refresh token.');
+    }
 
     // if refresh tokens are valid
     return db.transaction(async (tx) => {

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { refreshTokenTable, usersTable } from 'shared/db/schema/schema';
 import { db } from 'shared/db/drizzle';
 import type { Transaction } from '../../types/db';
@@ -22,8 +22,8 @@ export const findUserByRefreshToken = async (
   const user = await tx
     .select()
     .from(usersTable)
-    .innerJoin(refreshTokenTable, eq(refreshTokenTable.token, refreshToken))
-    .where(eq(usersTable.id, userId));
+    .innerJoin(refreshTokenTable, eq(refreshTokenTable.userId, usersTable.id))
+    .where(and(eq(usersTable.id, userId), eq(refreshTokenTable.token, refreshToken)));
   return user[0]?.users;
 };
 
