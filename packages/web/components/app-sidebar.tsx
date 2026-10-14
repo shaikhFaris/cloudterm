@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
+import { dashboardRoutes } from '@/lib/dashboard-routes';
 
 import { NavDocuments } from '@/components/nav-documents';
 import { NavMain } from '@/components/nav-main';
@@ -17,18 +19,9 @@ import {
 } from '@/components/ui/sidebar';
 import {
   LayoutDashboardIcon,
-  ListIcon,
-  ChartBarIcon,
-  FolderIcon,
-  UsersIcon,
-  CameraIcon,
-  FileTextIcon,
   Settings2Icon,
   CircleHelpIcon,
   SearchIcon,
-  DatabaseIcon,
-  FileChartColumnIcon,
-  FileIcon,
   CommandIcon,
   FlaskConical,
   RotateCcwClock,
@@ -42,8 +35,8 @@ const data = {
   },
   navMain: [
     {
-      title: 'Dashboard',
-      url: '#',
+      title: dashboardRoutes.home.title,
+      url: dashboardRoutes.home.href,
       icon: <LayoutDashboardIcon />,
     },
   ],
@@ -66,8 +59,8 @@ const data = {
   ],
   lab: [
     {
-      name: 'New Lab',
-      url: '#',
+      name: dashboardRoutes.newLabs.title,
+      url: dashboardRoutes.newLabs.href,
       icon: <FlaskConical />,
     },
     {
@@ -85,7 +78,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton
               className="data-[slot=sidebar-menu-button]:p-1.5!"
-              render={<a href="#" />}
+              render={<Link href={dashboardRoutes.home.href} />}
             >
               <CommandIcon className="size-5!" />
               <span className="text-base font-semibold">CloudTerm</span>

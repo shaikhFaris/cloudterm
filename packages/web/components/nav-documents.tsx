@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,13 +30,17 @@ export function NavDocuments({
   }[];
 }) {
   const { isMobile } = useSidebar();
+  const pathname = usePathname();
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
       <SidebarGroupLabel>Labs</SidebarGroupLabel>
       <SidebarMenu className="gap-0">
         {items.map((item) => (
           <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton render={<a href={item.url} />}>
+            <SidebarMenuButton
+              isActive={pathname === item.url}
+              render={<Link href={item.url} aria-current={pathname === item.url ? 'page' : undefined} />}
+            >
               {item.icon}
               <span>{item.name}</span>
             </SidebarMenuButton>
