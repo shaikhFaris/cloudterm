@@ -2,6 +2,40 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### GitHub sign-in
+
+The `/login` page offers GitHub sign-in only. It uses native `fetch` to request
+`/api/v1/auth/github` with `Accept: application/json`, then navigates the browser
+to the returned GitHub authorization URL. The gateway sets a temporary HttpOnly
+cookie before navigation. The browser returns through Next.js at the public
+callback URL, and the gateway sets the session cookies and redirects to `/dashboard`.
+Denied or expired authorization returns to `/login` with a friendly error.
+
+Next.js forwards `/api/v1/*` to `API_GATEWAY_URL`, defaulting to
+`http://localhost:3500`. Set this server-only variable in `packages/web/.env.local`
+when using a different gateway address. No `NEXT_PUBLIC` secrets or token storage
+are needed. Restart Next.js after changing rewrite configuration.
+
+Configure the gateway's root `.env` (see the root `.env.example`):
+
+```dotenv
+GITHUB_CALLBACK_URL=http://localhost:3000/api/v1/auth/github/callback
+GITHUB_SUCCESS_REDIRECT_URL=http://localhost:3000/dashboard
+GITHUB_FAILURE_REDIRECT_URL=http://localhost:3000/login
+COOKIE_DOMAIN=localhost
+```
+
+Register that exact callback URL in the GitHub OAuth App settings. Set the app's
+client ID and secret in the gateway environment and apply migration
+`0005_github_oauth.sql` before signing in. Docker Compose reads credentials from
+the root `.env`. Run the gateway on port 3500 and Next.js on port 3000, then visit
+`http://localhost:3000/login`. Development cookies support HTTP; production uses
+Secure cookies and requires HTTPS. For deployment, replace all public auth URLs
+with the frontend's HTTPS origin and set `COOKIE_DOMAIN` to its hostname.
+
+The dashboard currently contains sample UI and has no session guard. Backend
+authorization remains responsible for protecting authenticated API resources.
+
 First, run the development server:
 
 ```bash

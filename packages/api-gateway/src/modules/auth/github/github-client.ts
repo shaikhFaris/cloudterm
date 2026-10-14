@@ -34,8 +34,9 @@ export const beginGithubLogin = () => {
 
 export const validateGithubState = (cookie: unknown, state: unknown) => {
   try {
-    if (typeof cookie !== 'string' || typeof state !== 'string') throw new Error();
-    const payload = z.object({ state: z.string(), verifier: z.string() }).parse(
+    if (typeof cookie !== 'string' || cookie.length > 2048 ||
+      typeof state !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(state)) throw new Error();
+    const payload = z.object({ state: z.string().length(43), verifier: z.string().length(43) }).parse(
       jwt.verify(cookie, stateSecret(), { algorithms: ['HS256'], audience: oauthAudience }),
     );
     const actual = Buffer.from(state);
@@ -48,25 +49,37 @@ export const validateGithubState = (cookie: unknown, state: unknown) => {
 };
 
 const requestGithub = async (url: string, options: RequestInit): Promise<unknown> => {
+  const endpoint = new URL(url).pathname;
   try {
     const response = await fetch(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(10000) });
-    if (!response.ok) throw new Error();
+    if (!response.ok) {
+      throw new ApiError(502, 'GitHub authentication request failed. Please try again.',
+        `GitHub ${endpoint} returned HTTP ${response.status}`);
+    }
     return await response.json();
-  } catch {
-    throw new ApiError(502, 'GitHub authentication request failed. Please try again.');
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(502, 'GitHub authentication request failed. Please try again.',
+      `GitHub ${endpoint} network, timeout, redirect, or JSON failure`);
   }
 };
 
 export const getGithubIdentity = async (code: string, verifier: string) => {
   const config = getConfig();
-  const token = z.object({ access_token: z.string().min(1) }).safeParse(
-    await requestGithub('https://github.com/login/oauth/access_token', {
+  const tokenResponse = await requestGithub('https://github.com/login/oauth/access_token', {
       method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret,
         redirect_uri: config.callbackUrl, code, code_verifier: verifier }),
-    }),
-  );
-  if (!token.success) throw new ApiError(401, 'GitHub authorization failed. Please try again.');
+    });
+  const token = z.object({ access_token: z.string().min(1) }).safeParse(tokenResponse);
+  if (!token.success) {
+    const failure = z.object({ error: z.enum([
+      'incorrect_client_credentials', 'redirect_uri_mismatch', 'bad_verification_code',
+      'unverified_user_email',
+    ]) }).safeParse(tokenResponse);
+    throw new ApiError(401, 'GitHub authorization failed. Please try again.',
+      `GitHub token exchange: ${failure.success ? failure.data.error : 'unexpected_response'}`);
+  }
   const headers = { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token.data.access_token}`,
     'User-Agent': 'cloudterm-api-gateway', 'X-GitHub-Api-Version': '2022-11-28' };
   const profile = z.object({ id: z.number().int().positive() }).safeParse(

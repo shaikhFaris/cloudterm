@@ -17,14 +17,24 @@ const client = await import('../src/modules/auth/github/github-client');
 const repository = await import('../src/modules/auth/github/github-repository');
 const authRepository = await import('../src/modules/auth/auth-repository');
 const { loginWithGithub } = await import('../src/modules/auth/github/github-services');
-const { handleGithubCallback } = await import('../src/modules/auth/github/github-controller');
+const { handleGithubCallback, handleGithubLogin } = await import('../src/modules/auth/github/github-controller');
 const { logIn } = await import('../src/modules/auth/auth-services');
 const { db } = await import('shared/db/drizzle');
-const { env } = await import('../src/config/validateEnvs');
+const { env, envSchema } = await import('../src/config/validateEnvs');
 const { generateToken } = await import('shared/utils/jwt');
 const { authenticateTokens } = await import('../src/middleware/authenticate-tokens');
+const { ApiError } = await import('shared/utils/ApiError');
 
-afterEach(() => mock.restore());
+// Callback tests explicitly choose JSON or redirects, independent of local .env settings.
+env.GITHUB_SUCCESS_REDIRECT_URL = undefined;
+env.GITHUB_FAILURE_REDIRECT_URL = undefined;
+
+afterEach(() => {
+  mock.restore();
+  env.NODE_ENV = 'dev';
+  env.GITHUB_SUCCESS_REDIRECT_URL = undefined;
+  env.GITHUB_FAILURE_REDIRECT_URL = undefined;
+});
 
 function githubResponses(emails = [{ email: 'private@example.com', primary: true, verified: true }]) {
   return spyOn(globalThis, 'fetch')
@@ -36,6 +46,140 @@ function githubResponses(emails = [{ email: 'private@example.com', primary: true
 const user = { id: 'user-id', email: 'private@example.com', githubId: '123', password: null, createdAt: new Date() };
 
 describe('GitHub OAuth', () => {
+  test('rejects empty, reused, and weak production signing secrets', () => {
+    expect(envSchema.safeParse({ ...env, JWT_ACCESS_TOKEN_SECRET: '' }).success).toBe(false);
+    expect(envSchema.safeParse({ ...env, JWT_REFRESH_TOKEN_SECRET: env.JWT_ACCESS_TOKEN_SECRET }).success).toBe(false);
+    const production = { ...env, NODE_ENV: 'prod', GITHUB_CALLBACK_URL: 'https://cloudterm.example/api/v1/auth/github/callback' };
+    expect(envSchema.safeParse(production).success).toBe(false);
+    expect(envSchema.safeParse({ ...production,
+      JWT_ACCESS_TOKEN_SECRET: 'a'.repeat(32), JWT_REFRESH_TOKEN_SECRET: 'b'.repeat(32),
+    }).success).toBe(true);
+  });
+
+  test('production state cookies prevent parent-domain and path injection', () => {
+    env.NODE_ENV = 'prod';
+    const res = { set: mock(), vary: mock(), cookie: mock(), status: mock(), json: mock() };
+    res.status.mockReturnValue(res);
+    handleGithubLogin({ accepts: () => 'json' } as unknown as Request, res as unknown as Response, mock());
+    expect(res.cookie).toHaveBeenCalledWith('__Host-githubOAuth', expect.any(String), expect.objectContaining({
+      secure: true, httpOnly: true, path: '/', sameSite: 'lax',
+    }));
+    expect(res.cookie.mock.calls[0]?.[2]).not.toHaveProperty('domain');
+  });
+
+  test('production callback rejects a legacy cookie even if its state is valid', async () => {
+    env.NODE_ENV = 'prod';
+    const flow = client.beginGithubLogin();
+    const res = { set: mock(), clearCookie: mock() };
+    await expect(handleGithubCallback({ cookies: { githubOAuth: flow.cookie }, query: {
+      state: new URL(flow.url).searchParams.get('state'), code: 'code',
+    } } as unknown as Request, res as unknown as Response, mock())).rejects.toThrow('Invalid or expired');
+    expect(res.clearCookie).not.toHaveBeenCalled();
+  });
+
+  test('production callback uses and clears only the host-prefixed state cookie', async () => {
+    env.NODE_ENV = 'prod';
+    const flow = client.beginGithubLogin();
+    const res = { set: mock(), clearCookie: mock() };
+    await expect(handleGithubCallback({ cookies: { '__Host-githubOAuth': flow.cookie }, query: {
+      state: new URL(flow.url).searchParams.get('state'), error: 'access_denied',
+    } } as unknown as Request, res as unknown as Response, mock())).rejects.toThrow('authorization was denied');
+    expect(res.clearCookie).toHaveBeenCalledWith('__Host-githubOAuth', expect.objectContaining({
+      secure: true, path: '/', httpOnly: true,
+    }));
+  });
+
+  test('an unsolicited callback cannot clear a legitimate pending state cookie', async () => {
+    const flow = client.beginGithubLogin();
+    const res = { set: mock(), clearCookie: mock() };
+    await expect(handleGithubCallback({ cookies: { githubOAuth: flow.cookie }, query: {
+      state: 'x'.repeat(43), code: 'unrelated-code',
+    } } as unknown as Request, res as unknown as Response, mock())).rejects.toThrow('Invalid or expired');
+    expect(res.clearCookie).not.toHaveBeenCalled();
+    const originalState = new URL(flow.url).searchParams.get('state');
+    expect(client.validateGithubState(flow.cookie, originalState)).toBeString();
+  });
+
+  test('sessions issued for the same user in the same second have different tokens', async () => {
+    const first = await generateToken({ id: user.id }, env.JWT_REFRESH_TOKEN_SECRET, 120000);
+    const second = await generateToken({ id: user.id }, env.JWT_REFRESH_TOKEN_SECRET, 120000);
+    expect(first).not.toBe(second);
+    expect(jwt.verify(first, env.JWT_REFRESH_TOKEN_SECRET)).toHaveProperty('jti');
+  });
+  test('fetch login returns an authorization URL and an HttpOnly state cookie', () => {
+    const res = { set: mock(), vary: mock(), cookie: mock(), status: mock(), json: mock(), redirect: mock() };
+    res.status.mockReturnValue(res);
+    handleGithubLogin({ accepts: () => 'json' } as unknown as Request, res as unknown as Response, mock());
+    const body = res.json.mock.calls[0]?.[0] as { authorizationUrl: string };
+    expect(new URL(body.authorizationUrl).origin).toBe('https://github.com');
+    const cookie = res.cookie.mock.calls[0]?.[1];
+    expect(client.validateGithubState(cookie, new URL(body.authorizationUrl).searchParams.get('state'))).toBeString();
+    expect(res.cookie).toHaveBeenCalledWith('githubOAuth', expect.any(String), expect.objectContaining({
+      httpOnly: true, sameSite: 'lax', path: '/api/v1/auth/github', secure: false,
+    }));
+    expect(res.redirect).not.toHaveBeenCalled();
+  });
+
+  test('direct browser login still redirects to GitHub', () => {
+    const res = { set: mock(), vary: mock(), cookie: mock(), redirect: mock() };
+    handleGithubLogin({ accepts: () => 'html' } as unknown as Request, res as unknown as Response, mock());
+    expect(res.redirect).toHaveBeenCalledWith(expect.stringContaining('https://github.com/login/oauth/authorize?'));
+  });
+
+  test('callback failure redirects only an allowlisted code to the configured login page', async () => {
+    env.GITHUB_FAILURE_REDIRECT_URL = 'http://localhost:3000/login';
+    const res = { set: mock(), clearCookie: mock(), redirect: mock() };
+    await handleGithubCallback({ cookies: {}, query: { state: 'invalid', code: 'code' } } as unknown as Request,
+      res as unknown as Response, mock());
+    expect(res.redirect).toHaveBeenCalledWith('http://localhost:3000/login?error=github_state');
+
+    const flow = client.beginGithubLogin();
+    await handleGithubCallback({ cookies: { githubOAuth: flow.cookie }, query: {
+      state: new URL(flow.url).searchParams.get('state'), error: 'access_denied', error_description: 'untrusted message',
+    } } as unknown as Request, res as unknown as Response, mock());
+    expect(res.redirect).toHaveBeenLastCalledWith('http://localhost:3000/login?error=github_denied');
+  });
+
+  test('email conflicts return to the login page without exposing details', async () => {
+    env.GITHUB_FAILURE_REDIRECT_URL = 'http://localhost:3000/login';
+    spyOn(client, 'getGithubIdentity').mockRejectedValue(new ApiError(409, 'private details'));
+    const flow = client.beginGithubLogin();
+    const res = { set: mock(), clearCookie: mock(), redirect: mock() };
+    await handleGithubCallback({ cookies: { githubOAuth: flow.cookie }, query: {
+      state: new URL(flow.url).searchParams.get('state'), code: 'code',
+    } } as unknown as Request, res as unknown as Response, mock());
+    expect(res.redirect).toHaveBeenCalledWith('http://localhost:3000/login?error=github_conflict');
+  });
+
+  test('unexpected callback failures return a generic error and record no private details', async () => {
+    env.GITHUB_FAILURE_REDIRECT_URL = 'http://localhost:3000/login';
+    const { default: logger } = await import('shared/utils/logger');
+    const log = spyOn(logger, 'error').mockImplementation(() => logger);
+    spyOn(client, 'getGithubIdentity').mockRejectedValue(new Error('private details'));
+    const flow = client.beginGithubLogin();
+    const res = { set: mock(), clearCookie: mock(), redirect: mock() };
+    await handleGithubCallback({ cookies: { githubOAuth: flow.cookie }, query: {
+      state: new URL(flow.url).searchParams.get('state'), code: 'code',
+    } } as unknown as Request, res as unknown as Response, mock());
+    expect(res.redirect).toHaveBeenCalledWith('http://localhost:3000/login?error=github_failed');
+    expect(log).toHaveBeenCalledWith('GitHub sign-in failed unexpectedly: code=unknown');
+  });
+
+  test('successful browser callback sets cookies before redirecting to the dashboard', async () => {
+    env.GITHUB_SUCCESS_REDIRECT_URL = 'http://localhost:3000/dashboard';
+    spyOn(client, 'getGithubIdentity').mockResolvedValue({ githubId: '123', email: user.email });
+    spyOn(db, 'transaction').mockImplementation(async (callback) => callback({} as Transaction));
+    spyOn(repository, 'findUserByGithubId').mockResolvedValue(user);
+    spyOn(authRepository, 'insertOrUpdateRefreshToken').mockResolvedValue(undefined);
+    const flow = client.beginGithubLogin();
+    const res = { set: mock(), clearCookie: mock(), cookie: mock(), redirect: mock() };
+    await handleGithubCallback({ cookies: { githubOAuth: flow.cookie }, query: {
+      state: new URL(flow.url).searchParams.get('state'), code: 'code',
+    } } as unknown as Request, res as unknown as Response, mock());
+    expect(res.cookie).toHaveBeenCalledWith('accessToken', expect.any(String), expect.objectContaining({ httpOnly: true, secure: false }));
+    expect(res.cookie).toHaveBeenCalledWith('refreshToken', expect.any(String), expect.objectContaining({ httpOnly: true, secure: false }));
+    expect(res.redirect).toHaveBeenCalledWith('http://localhost:3000/dashboard');
+  });
   test('session JWT expiration uses the configured milliseconds', async () => {
     const token = await generateToken({ id: user.id }, env.JWT_ACCESS_TOKEN_SECRET, 60000);
     const claims = jwt.verify(token, env.JWT_ACCESS_TOKEN_SECRET) as jwt.JwtPayload;
@@ -112,6 +256,23 @@ describe('GitHub OAuth', () => {
     await expect(client.getGithubIdentity('code', 'verifier')).rejects.toThrow('GitHub authentication request failed');
   });
 
+  test('token exchange diagnostics retain only known GitHub error codes', async () => {
+    const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValueOnce(Response.json({
+      error: 'incorrect_client_credentials', error_description: 'private upstream details',
+    }));
+    try {
+      await client.getGithubIdentity('code', 'verifier');
+      throw new Error('Expected token rejection');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as InstanceType<typeof ApiError>).debugMsg).toBe('GitHub token exchange: incorrect_client_credentials');
+    }
+    fetchMock.mockResolvedValueOnce(Response.json({ error: 'private upstream value' }));
+    await expect(client.getGithubIdentity('code', 'verifier')).rejects.toMatchObject({
+      debugMsg: 'GitHub token exchange: unexpected_response',
+    });
+  });
+
   test('rejects malformed JSON and non-success GitHub responses', async () => {
     const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('invalid JSON'));
     await expect(client.getGithubIdentity('code', 'verifier')).rejects.toThrow('request failed');
@@ -119,11 +280,11 @@ describe('GitHub OAuth', () => {
     await expect(client.getGithubIdentity('code', 'verifier')).rejects.toThrow('request failed');
   });
 
-  test('invalid callback state clears the cookie and never calls GitHub', async () => {
+  test('invalid callback state preserves a pending login and never calls GitHub', async () => {
     const fetchMock = spyOn(globalThis, 'fetch');
     const res = { set: mock(), clearCookie: mock() };
     await expect(handleGithubCallback({ cookies: {}, query: { code: 'code' } } as unknown as Request, res as unknown as Response, mock())).rejects.toThrow('Invalid or expired');
-    expect(res.clearCookie).toHaveBeenCalled();
+    expect(res.clearCookie).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
