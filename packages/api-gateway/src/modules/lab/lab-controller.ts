@@ -12,6 +12,7 @@ export const handleCreateLab: RequestHandler = async (req, res) => {
 };
 
 export const handleGetLabStatus: RequestHandler = async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   if (!req.user) throw new ApiError(401, 'User not authenticated.');
 
   const result = getLabStatusSchema.safeParse({ params: req.params });

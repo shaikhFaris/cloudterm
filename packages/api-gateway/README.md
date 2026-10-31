@@ -1,4 +1,24 @@
-# API gateway authentication
+# API gateway
+
+## Labs
+
+Both lab endpoints require the existing access and refresh cookies.
+
+- `POST /api/v1/labs/create` with an empty JSON object returns HTTP 202 and
+  `{ "labId": "<workspace UUID>", "jobId": "<queue job ID>", "status": "queued" }`.
+- `GET /api/v1/labs/:labId/status` returns HTTP 200 and
+  `{ "labId": "<workspace UUID>", "status": "queued" }` with `Cache-Control: no-store`.
+
+Poll using `labId`, not `jobId`. The status endpoint reads PostgreSQL, scoped to
+the authenticated user's workspace. Its status is `queued`, `running`, or `deleted`.
+The Kubernetes manager persists lifecycle changes; the status request does not query
+Kubernetes or BullMQ. A malformed UUID returns 400. Missing labs and labs belonging
+to another user both return 404. Database failures propagate as server errors.
+
+Creation currently enqueues inside a database transaction, with retries and
+best-effort queue cleanup if committing fails. PostgreSQL and Redis do not share
+a transaction: workers can race the commit, and a process crash can bypass cleanup.
+A transactional outbox is still needed for guaranteed delivery across these failures.
 
 ## GitHub OAuth
 

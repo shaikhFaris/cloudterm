@@ -1,18 +1,20 @@
 import { db } from 'shared/db/drizzle';
-import { labQueue } from 'shared/redis/Queue';
-import { insertWorkspace } from './lab-repository';
+import { findOwnedLabStatus, insertWorkspace } from './lab-repository';
 import type { Job, JobProgress } from 'bullmq';
 import { ApiError } from 'shared/utils/ApiError';
 
-export const getLabStatus = async (_userId: string, _labId: string): Promise<unknown> => {
-  // TODO: Retrieve the lab status, scoped to the authenticated user's labs.
-  throw new ApiError(501, 'Lab status retrieval is not implemented yet.');
+export const getLabStatus = async (userId: string, labId: string) => {
+  const lab = await findOwnedLabStatus(userId, labId);
+  if (!lab) throw new ApiError(404, 'Lab not found.');
+  return lab;
 };
 
 export const createLab = async (userId: string) => {
+  // Status reads need only PostgreSQL; connect to the queue when creating a lab.
+  const { labQueue } = await import('shared/redis/Queue');
   let job: Job<any, any, string, JobProgress> | undefined;
   try {
-    return db.transaction(async (tx) => {
+    return await db.transaction(async (tx) => {
       const res = await insertWorkspace(tx, userId);
       if (!res) throw new Error('Internal Error in k8s manager');
 
@@ -28,13 +30,20 @@ export const createLab = async (userId: string) => {
       );
 
       return {
+        labId: res.id,
         jobId: job.id,
         status: 'queued' as const,
       };
     });
   } catch (error) {
-    // remove job if DB failes to insert
-    if (job && job?.id) await labQueue.remove(job?.id);
+    // Await the transaction so commit failures also attempt queue cleanup.
+    if (job?.id) {
+      try {
+        await labQueue.remove(job.id);
+      } catch (cleanupError) {
+        console.error('Failed to remove lab job after transaction failure.', cleanupError);
+      }
+    }
     throw error;
   }
 };
