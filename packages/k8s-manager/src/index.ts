@@ -1,27 +1,16 @@
-import { Worker, Job } from 'bullmq';
+import { Worker } from 'bullmq';
 import { QUEUE_NAME } from 'shared/const/redis';
 import { env } from './env';
-import { createPod, startCleanupWorker } from './k8s';
+import { startCleanupWorker } from './k8s';
+import { processLabJob } from './lab-processor';
 // import { listPods } from './k8s';
 
 const worker = new Worker(
   QUEUE_NAME,
-  async (job: Job) => {
-    if (!job || !job.data) {
-      return;
-    }
-    console.log(job.data);
-    const userId = job.data.userId as string;
-    const workspaceId = job.data.workspaceId as string;
-    if (!userId || !workspaceId) {
-      console.error('UserID or workspaceId not found');
-      return;
-    }
-    await createPod(userId, workspaceId);
-  },
+  processLabJob,
   {
     connection: {
-      url: env.REDIS_HOST,
+      host: env.REDIS_HOST,
       port: env.REDIS_PORT,
     },
   },

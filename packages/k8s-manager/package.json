@@ -8,11 +8,12 @@
     "@types/bun": "latest"
   },
   "dependencies": {
-    "shared": "workspace:*",
     "@kubernetes/client-node": "^2.0.0",
     "bullmq": "^6.3.11",
     "dotenv": "^18.0.6",
+    "drizzle-orm": "^0.45.3",
     "express": "^5.2.1",
+    "shared": "workspace:*",
     "yaml": "^2.9.1"
   }
 }
