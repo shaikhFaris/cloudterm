@@ -1,7 +1,7 @@
 import { type RequestHandler } from 'express';
 import type z from 'zod';
 import type { loginSchema, signUpSchema } from './auth-schema';
-import { logIn, logout, refresh, signIn } from './auth-services';
+import { checkAuth, logIn, logout, refresh, signIn } from './auth-services';
 import { clearAllCookies, cookieOptions, setAllCookies } from '../../utils/cookie';
 import { ApiError } from 'shared/utils/ApiError';
 import { env } from '../../config/validateEnvs';
@@ -47,13 +47,25 @@ export const handleLogout: RequestHandler = async (req, res) => {
   });
 };
 
+export const handleCheckAuth: RequestHandler = async (req, res) => {
+  if (!req.refreshToken) throw new ApiError(401, 'Invalid tokens. Login first.');
+
+  if (!req.user) throw new ApiError(500, 'UserId not attached to req in middleware');
+
+  const accountInfo = await checkAuth(req.user.id, req.refreshToken);
+  res.set('Cache-Control', 'no-store');
+  res.status(200).json(accountInfo);
+};
+
 export const handleRefresh: RequestHandler = async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
   if (!refreshToken) throw new ApiError(401, 'Invalid tokens.');
 
   const { accessToken } = await refresh(refreshToken);
 
-  res.clearCookie('accessToken');
+  res.set('Cache-Control', 'no-store');
+
+  res.clearCookie('accessToken', cookieOptions);
 
   res.cookie('accessToken', accessToken, {
     httpOnly: true,

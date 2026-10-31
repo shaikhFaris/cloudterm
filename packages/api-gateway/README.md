@@ -41,6 +41,13 @@ OAuth tests mock GitHub and database operations; they need no credentials or liv
 
 ## Security and deployment limitations
 
+`GET /api/v1/auth/check` returns `{ "id": "...", "email": "..." }` with
+`Cache-Control: no-store`. It requires valid JWTs plus a refresh record matching
+the user and presented token, including for passwordless GitHub users. An inactive
+session returns 401. The web client can call `POST /api/v1/auth/refresh` and retry
+an expired-access request once. Other protected endpoints must still validate
+authentication independently; the frontend check is not an authorization boundary.
+
 Session JWT lifetimes use the configured milliseconds. Tokens issued before the
 expiration-unit fix retain their original expiry; rotate the signing secrets when
 deploying if those sessions need to be invalidated (this logs everyone out).

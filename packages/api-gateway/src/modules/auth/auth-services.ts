@@ -44,6 +44,20 @@ export const logIn = async (email: string, password: string) => {
   });
 };
 
+export const checkAuth = async (userId: string, refreshToken: string) => {
+  return await db.transaction(async (tx) => {
+    const user = await findUserByRefreshToken(tx, refreshToken, userId);
+
+    // user does not exist
+    if (!user) throw new ApiError(401, 'User not authenticated.');
+
+    return {
+      id: user.id,
+      email: user.email,
+    };
+  });
+};
+
 export const createSession = async (tx: Transaction, user: typeof usersTable.$inferSelect) => {
   const accessToken = await generateToken(
     {
@@ -74,11 +88,9 @@ export const logout = async (refreshToken: string) => {
 
 export const refresh = async (refreshToken: string) => {
   try {
-    const decodedRefreshToken = jwt.verify(
-      refreshToken,
-      env.JWT_REFRESH_TOKEN_SECRET,
-      { algorithms: ['HS256'] },
-    ) as JWTPayload;
+    const decodedRefreshToken = jwt.verify(refreshToken, env.JWT_REFRESH_TOKEN_SECRET, {
+      algorithms: ['HS256'],
+    }) as JWTPayload;
 
     if (typeof decodedRefreshToken.id !== 'string' || !decodedRefreshToken.id) {
       throw new ApiError(401, 'Invalid refresh token.');
