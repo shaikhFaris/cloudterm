@@ -1,7 +1,13 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { Suspense, type CSSProperties, type ReactNode } from 'react';
 import { AppSidebar } from '@/components/app-sidebar';
 import { SiteHeader } from '@/components/site-header';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { getCurrentUser } from '@/lib/server/auth';
+
+async function DashboardSidebar() {
+  const user = await getCurrentUser();
+  return user ? <AppSidebar user={user} variant="inset" /> : null;
+}
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
@@ -13,7 +19,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         } as CSSProperties
       }
     >
-      <AppSidebar variant="inset" />
+      <Suspense fallback={null}><DashboardSidebar /></Suspense>
       <SidebarInset>
         <SiteHeader />
         <div className="flex flex-1 flex-col">

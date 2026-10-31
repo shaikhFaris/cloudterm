@@ -14,6 +14,11 @@ export const findUserByEmail = async (tx: Transaction, email: string) => {
   const user = await tx.select().from(usersTable).where(eq(usersTable.email, email));
   return user[0];
 };
+export const findUserById = async (tx: Transaction, id: string) => {
+  const user = await tx.select().from(usersTable).where(eq(usersTable.id, id));
+  return user[0];
+};
+
 export const findUserByRefreshToken = async (
   tx: Transaction,
   refreshToken: string,

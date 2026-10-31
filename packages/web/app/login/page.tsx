@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { GalleryVerticalEndIcon } from 'lucide-react';
 import { LoginForm } from '@/components/login-form';
-import { getLoginError } from '@/lib/auth';
+import { getLoginError } from '@/lib/auth-errors';
 
 type LoginPageProps = {
   searchParams: Promise<{ error?: string | string[] }>;

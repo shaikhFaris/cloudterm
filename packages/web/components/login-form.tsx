@@ -3,7 +3,7 @@
 import { useRef, useState, type ComponentProps, type FormEvent } from 'react';
 import { LoaderCircleIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getGithubAuthorizationUrl } from '@/lib/auth';
+import { useGithubLogin } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -13,6 +13,7 @@ export function LoginForm({ className, initialError, ...props }: LoginFormProps)
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(initialError);
   const pending = useRef(false);
+  const githubLogin = useGithubLogin();
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -22,7 +23,7 @@ export function LoginForm({ className, initialError, ...props }: LoginFormProps)
     setError(undefined);
 
     try {
-      const authorizationUrl = await getGithubAuthorizationUrl();
+      const authorizationUrl = await githubLogin.mutateAsync();
       window.location.assign(authorizationUrl);
     } catch {
       setError('Unable to connect to GitHub sign-in. Please try again.');

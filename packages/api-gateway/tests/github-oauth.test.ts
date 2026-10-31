@@ -18,7 +18,8 @@ const repository = await import('../src/modules/auth/github/github-repository');
 const authRepository = await import('../src/modules/auth/auth-repository');
 const { loginWithGithub } = await import('../src/modules/auth/github/github-services');
 const { handleGithubCallback, handleGithubLogin } = await import('../src/modules/auth/github/github-controller');
-const { logIn } = await import('../src/modules/auth/auth-services');
+const { logIn, checkAuth } = await import('../src/modules/auth/auth-services');
+const { handleCheckAuth } = await import('../src/modules/auth/auth-controller');
 const { db } = await import('shared/db/drizzle');
 const { env, envSchema } = await import('../src/config/validateEnvs');
 const { generateToken } = await import('shared/utils/jwt');
@@ -46,6 +47,30 @@ function githubResponses(emails = [{ email: 'private@example.com', primary: true
 const user = { id: 'user-id', email: 'private@example.com', githubId: '123', password: null, createdAt: new Date() };
 
 describe('GitHub OAuth', () => {
+  test('session checks accept passwordless GitHub users with an active refresh record', async () => {
+    spyOn(db, 'transaction').mockImplementation(async (callback) => callback({} as Transaction));
+    const lookup = spyOn(authRepository, 'findUserByRefreshToken').mockResolvedValue(user);
+    expect(await checkAuth(user.id, 'active-token')).toEqual({ id: user.id, email: user.email });
+    expect(lookup).toHaveBeenCalledWith(expect.anything(), 'active-token', user.id);
+  });
+
+  test('session checks reject users whose refresh record was revoked', async () => {
+    spyOn(db, 'transaction').mockImplementation(async (callback) => callback({} as Transaction));
+    spyOn(authRepository, 'findUserByRefreshToken').mockResolvedValue(undefined);
+    await expect(checkAuth(user.id, 'revoked-token')).rejects.toMatchObject({ status: 401 });
+  });
+
+  test('the check endpoint sends minimal uncached account JSON', async () => {
+    spyOn(db, 'transaction').mockImplementation(async (callback) => callback({} as Transaction));
+    spyOn(authRepository, 'findUserByRefreshToken').mockResolvedValue(user);
+    const res = { set: mock(), status: mock(), json: mock() };
+    res.status.mockReturnValue(res);
+    await handleCheckAuth({ user: { id: user.id }, refreshToken: 'active-token' } as unknown as Request,
+      res as unknown as Response, mock());
+    expect(res.set).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ id: user.id, email: user.email });
+  });
   test('rejects empty, reused, and weak production signing secrets', () => {
     expect(envSchema.safeParse({ ...env, JWT_ACCESS_TOKEN_SECRET: '' }).success).toBe(false);
     expect(envSchema.safeParse({ ...env, JWT_REFRESH_TOKEN_SECRET: env.JWT_ACCESS_TOKEN_SECRET }).success).toBe(false);
