@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Abel, Playfair_Display, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { QueryProvider } from '@/components/query-provider';
 
 const fontSans = Abel({
   subsets: ['latin'],
@@ -34,7 +35,7 @@ export default function RootLayout({
       <body
         className={`${fontSans.variable} ${fontSerif.variable} ${fontMono.variable} antialiased`}
       >
-        <TooltipProvider>{children}</TooltipProvider>
+        <QueryProvider><TooltipProvider>{children}</TooltipProvider></QueryProvider>
       </body>
     </html>
   );

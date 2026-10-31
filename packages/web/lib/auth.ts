@@ -1,29 +1,21 @@
-const loginErrors: Record<string, string> = {
-  github_denied: 'GitHub authorization was cancelled. Please try again.',
-  github_state: 'Your sign-in attempt expired or is invalid. Please try again.',
-  github_email: 'Verify your primary email on GitHub before signing in.',
-  github_conflict: 'An account with this email already exists and cannot be linked automatically.',
-  github_failed: 'GitHub sign-in failed. Please try again.',
-};
+'use client';
 
-export function getLoginError(code: string | undefined): string | undefined {
-  if (!code) return undefined;
-  return Object.hasOwn(loginErrors, code) ? loginErrors[code] : loginErrors.github_failed;
+import { api } from './api-client';
+import type { AuthUser } from './auth-types';
+
+export type { AuthUser } from './auth-types';
+
+export async function getCurrentUser(signal?: AbortSignal): Promise<AuthUser> {
+  const { data } = await api.get<AuthUser>('/auth/check', { signal });
+  return data;
+}
+
+export async function logout(): Promise<void> {
+  await api.post('/auth/logout');
 }
 
 export async function getGithubAuthorizationUrl(): Promise<string> {
-  const response = await fetch('/api/v1/auth/github', {
-    headers: { Accept: 'application/json' },
-    credentials: 'same-origin',
-    cache: 'no-store',
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (!response.ok) {
-    throw new Error('GitHub sign-in is temporarily unavailable. Please try again.');
-  }
-
-  const data: unknown = await response.json();
+  const { data } = await api.get<unknown>('/auth/github', { skipAuthRefresh: true });
   if (!data || typeof data !== 'object' || !('authorizationUrl' in data) ||
     typeof data.authorizationUrl !== 'string') {
     throw new Error('Unable to start GitHub sign-in. Please try again.');
