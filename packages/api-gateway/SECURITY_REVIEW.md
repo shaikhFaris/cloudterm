@@ -63,5 +63,7 @@ containers were rebuilt or restarted as part of this review.
   matching. Configure HTTPS and redact callback codes/cookies at reverse proxies.
 - Test production browser behavior and the real GitHub exchange after deploying.
   Database migration `0005_github_oauth.sql` must exist in each target database.
-- The current dashboard is sample UI without a session guard. Sensitive data and
-  actions must always be authorized by the backend regardless of frontend guards.
+- The dashboard pages now use a server-only `/auth/check` helper before rendering
+  protected content. New pages and server data/actions must call it independently;
+  the layout is not the authorization boundary. API resources still need backend
+  authorization for each request.
