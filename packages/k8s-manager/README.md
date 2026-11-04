@@ -2,6 +2,11 @@
 
 The API gateway creates the workspace row as `queued` and submits its ID and
 owner to BullMQ. The manager updates that row; it never inserts another workspace.
+The gateway commits the row before submitting the job. A dispatcher checks up to
+100 oldest queued rows every ten seconds and submits them using the workspace UUID
+as the BullMQ job ID. Duplicate submissions are deduplicated while a job exists;
+replayed jobs also check the persisted workspace state before provisioning.
+This recovers a gateway crash or queue outage between commit and submission.
 
 - `queued`: provisioning is pending, the pod is not ready, or another attempt is scheduled.
 - `running`: Kubernetes reports phase `Running` and condition `Ready=True` with no deletion timestamp.
@@ -28,8 +33,8 @@ being marked deleted. This repairs manual deletions and database failures that
 occurred after pod removal. Each cleanup is idempotent and independent failures
 are logged without blocking other pods.
 
-Database and queue operations are still separate systems; this change does not
-introduce a transactional outbox or a durable lifecycle event log. Reconciliation
+Database and queue operations are separate systems; queued rows provide durable
+dispatch intent, without introducing a separate lifecycle event log. Reconciliation
 uses polling, so status is eventually consistent. Exhausted job errors remain in
 BullMQ; a distinct `failed` application status would require a schema change.
 

@@ -28,3 +28,9 @@ export async function listRunningWorkspaces() {
   return db.select({ id: workspaceTable.id, userId: workspaceTable.userId })
     .from(workspaceTable).where(eq(workspaceTable.status, 'running'));
 }
+
+export async function listQueuedWorkspaces() {
+  return db.select({ id: workspaceTable.id, userId: workspaceTable.userId })
+    .from(workspaceTable).where(eq(workspaceTable.status, 'queued'))
+    .orderBy(workspaceTable.createdAt).limit(100);
+}

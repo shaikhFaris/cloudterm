@@ -1,10 +1,12 @@
 import { Suspense, type CSSProperties, type ReactNode } from 'react';
+import { connection } from 'next/server';
 import { AppSidebar } from '@/components/app-sidebar';
 import { SiteHeader } from '@/components/site-header';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { getCurrentUser } from '@/lib/server/auth';
 
 async function DashboardSidebar() {
+  await connection();
   const user = await getCurrentUser();
   return user ? <AppSidebar user={user} variant="inset" /> : null;
 }
