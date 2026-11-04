@@ -1,0 +1,1 @@
+export const ACTIVE_DEADLINE_SECONDS = 30;

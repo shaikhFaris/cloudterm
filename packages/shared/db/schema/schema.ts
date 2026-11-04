@@ -29,6 +29,9 @@ export const workspaceTable = pgTable('workspaces', {
   })
     .defaultNow()
     .notNull(),
+  expiresAt: timestamp('expires_at', {
+    withTimezone: true,
+  }),
   userId: uuid('user_id')
     .references(() => usersTable.id, { onDelete: 'cascade' })
     .notNull(),

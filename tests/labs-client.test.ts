@@ -1,9 +1,32 @@
 import { afterEach, expect, mock, spyOn, test } from 'bun:test';
 import { api } from '../packages/web/lib/api-client';
 import { createLab, getActiveLab, getLabStatus, labPollInterval } from '../packages/web/lib/labs';
+import { formatLabTime, remainingLabSeconds } from '../packages/web/lib/lab-timer';
 
 const labId = '4d3f5c21-cfde-4e53-a7d5-bf43a513d153';
 afterEach(() => mock.restore());
+
+test('status preserves the backend expiry, including an unset deadline while queued', async () => {
+  const expiresAt = '2026-11-04T12:00:30.000Z';
+  const get = spyOn(api, 'get').mockResolvedValueOnce({ data: { labId, status: 'running', expiresAt } })
+    .mockResolvedValueOnce({ data: { labId, status: 'queued', expiresAt: null } });
+  expect((await getLabStatus(labId)).expiresAt).toBe(expiresAt);
+  expect((await getLabStatus(labId)).expiresAt).toBeNull();
+  get.mockResolvedValueOnce({ data: { labId, status: 'running', expiresAt: 'invalid-date' } });
+  await expect(getLabStatus(labId)).rejects.toThrow();
+});
+
+test('countdown derives from the deadline across delayed ticks and clamps at zero', () => {
+  const expiresAt = '2026-11-04T12:00:30.000Z';
+  const start = Date.parse('2026-11-04T12:00:00.000Z');
+  expect(remainingLabSeconds(expiresAt, start)).toBe(30);
+  expect(remainingLabSeconds(expiresAt, start + 25_100)).toBe(5);
+  expect(remainingLabSeconds(expiresAt, start + 30_000)).toBe(0);
+  expect(remainingLabSeconds(expiresAt, start + 90_000)).toBe(0);
+  expect(formatLabTime(30)).toBe('00:30');
+  expect(formatLabTime(65)).toBe('01:05');
+  expect(formatLabTime(3_661)).toBe('1:01:01');
+});
 
 test('creation uses authenticated Axios and preserves the caller\'s idempotency key', async () => {
   const post = spyOn(api, 'post').mockResolvedValue({ data: { labId, status: 'queued', jobId: labId } });

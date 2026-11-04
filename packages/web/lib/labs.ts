@@ -3,7 +3,11 @@
 import z from 'zod';
 import { api } from './api-client';
 
-const labSchema = z.object({ labId: z.uuid(), status: z.enum(['queued', 'running', 'deleted']) });
+const labSchema = z.object({
+  labId: z.uuid(),
+  status: z.enum(['queued', 'running', 'deleted']),
+  expiresAt: z.iso.datetime({ offset: true }).nullable().optional(),
+});
 export type Lab = z.infer<typeof labSchema>;
 
 export async function createLab(idempotencyKey: string): Promise<Lab> {

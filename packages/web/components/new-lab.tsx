@@ -4,6 +4,7 @@ import { Check, Circle, FlaskConical, LoaderCircle, RefreshCw, Server, ShieldChe
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useLabs } from '@/hooks/use-labs';
+import { LabCountdown } from '@/components/lab-countdown';
 
 export function NewLab({ userId }: { userId: string }) {
   const { lab, active, status, mutation, canCreate, start, checkAgain } = useLabs(userId);
@@ -49,6 +50,7 @@ export function NewLab({ userId }: { userId: string }) {
               </li>)}
             </ol>}
           </div>
+          {running && lab.expiresAt && <LabCountdown key={`${lab.labId}:${lab.expiresAt}`} expiresAt={lab.expiresAt} />}
           {error && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
             <p>{mutation.isError ? 'We couldn’t confirm your request. Retry safely; this won’t create a second workspace.' :
               'We couldn’t update your lab status. Your workspace may still be running.'}</p>
