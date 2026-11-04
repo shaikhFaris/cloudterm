@@ -24,10 +24,14 @@ describe('authenticated Axios client', () => {
       return reply(config, config._authRetried ? 202 : 401, { jobId: 'job' });
     };
     const api = createApiClient({ adapter });
-    expect((await api.post('/labs/create', { example: 'body' }, { headers: { 'X-Example': 'value' } })).data).toEqual({ jobId: 'job' });
+    const idempotencyKey = '4d3f5c21-cfde-4e53-a7d5-bf43a513d153';
+    expect((await api.post('/labs/create', { example: 'body' }, {
+      headers: { 'X-Example': 'value', 'Idempotency-Key': idempotencyKey },
+    })).data).toEqual({ jobId: 'job' });
     expect(requests.map((request) => request.url)).toEqual(['/labs/create', '/auth/refresh', '/labs/create']);
     expect(requests[2]?.data).toBe(requests[0]?.data);
     expect(requests[2]?.headers.get('X-Example')).toBe('value');
+    expect(requests[2]?.headers.get('Idempotency-Key')).toBe(idempotencyKey);
     expect(requests.every((request) => request.withCredentials)).toBe(true);
     expect(requests[0]?.headers.has('Authorization')).toBe(false);
   });

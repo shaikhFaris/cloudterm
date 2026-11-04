@@ -43,6 +43,13 @@
       "when": 1791956353395,
       "tag": "0005_github_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793796402290,
+      "tag": "0006_noisy_lady_ursula",
+      "breakpoints": true
     }
   ]
 }

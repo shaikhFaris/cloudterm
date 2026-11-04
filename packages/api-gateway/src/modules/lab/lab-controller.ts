@@ -1,14 +1,21 @@
 import { type RequestHandler } from 'express';
 import { ApiError } from 'shared/utils/ApiError';
-import { createLab, getLabStatus } from './lab-services';
-import { getLabStatusSchema } from './lab-schema';
+import { createLab, getActiveLab, getLabStatus } from './lab-services';
+import { getLabStatusSchema, idempotencyKeySchema } from './lab-schema';
 
 export const handleCreateLab: RequestHandler = async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   if (!req.user) throw new ApiError(401, 'User not authenticated.');
+  const key = idempotencyKeySchema.safeParse(req.get('Idempotency-Key'));
+  if (!key.success) throw new ApiError(400, 'Idempotency-Key must be a UUID.');
+  const lab = await createLab(req.user.id, key.data);
+  res.status(lab.status === 'queued' ? 202 : 200).json(lab);
+};
 
-  const job = await createLab(req.user.id);
-
-  res.status(202).json(job);
+export const handleGetActiveLab: RequestHandler = async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!req.user) throw new ApiError(401, 'User not authenticated.');
+  res.status(200).json(await getActiveLab(req.user.id));
 };
 
 export const handleGetLabStatus: RequestHandler = async (req, res) => {

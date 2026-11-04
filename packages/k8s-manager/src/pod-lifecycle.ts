@@ -1,4 +1,9 @@
-import { Observable, type ConfigurationOptions, type CoreV1Api, type V1Pod } from '@kubernetes/client-node';
+import {
+  Observable,
+  type ConfigurationOptions,
+  type CoreV1Api,
+  type V1Pod,
+} from '@kubernetes/client-node';
 
 export type PodPollOptions = {
   timeoutMs?: number;
@@ -16,25 +21,37 @@ export function hasKubernetesCode(error: unknown, code: number): boolean {
 export function requestTimeout(timeoutMs = 10_000): ConfigurationOptions {
   return {
     middlewareMergeStrategy: 'append',
-    middleware: [{
-      pre(context) {
-        context.setSignal(AbortSignal.timeout(Math.max(1, Math.ceil(timeoutMs))));
-        return new Observable(Promise.resolve(context));
+    middleware: [
+      {
+        pre(context) {
+          context.setSignal(AbortSignal.timeout(Math.max(1, Math.ceil(timeoutMs))));
+          return new Observable(Promise.resolve(context));
+        },
+        post(context) {
+          return new Observable(Promise.resolve(context));
+        },
       },
-      post(context) { return new Observable(Promise.resolve(context)); },
-    }],
+    ],
   };
 }
 
 export function isPodReady(pod: V1Pod): boolean {
-  return !pod.metadata?.deletionTimestamp && pod.status?.phase === 'Running' &&
-    pod.status.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True') === true;
+  return (
+    !pod.metadata?.deletionTimestamp &&
+    pod.status?.phase === 'Running' &&
+    pod.status.conditions?.some(
+      (condition) => condition.type === 'Ready' && condition.status === 'True',
+    ) === true
+  );
 }
 
 export async function waitForPod(
-  api: CoreV1Api, name: string, namespace: string, target: 'ready' | 'deleted',
+  api: CoreV1Api,
+  name: string,
+  namespace: string,
+  target: 'ready' | 'deleted',
   options: PodPollOptions = {},
-): Promise<void> {
+): Promise<{ startedAt: Date } | void> {
   const now = options.now ?? (() => performance.now());
   const sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const deadline = now() + (options.timeoutMs ?? (target === 'ready' ? 60_000 : 30_000));
@@ -43,17 +60,27 @@ export async function waitForPod(
   while (now() < deadline) {
     let pod: V1Pod;
     try {
-      pod = await api.readNamespacedPod({ name, namespace }, requestTimeout(Math.min(10_000, deadline - now())));
+      pod = await api.readNamespacedPod(
+        { name, namespace },
+        requestTimeout(Math.min(10_000, deadline - now())),
+      );
     } catch (error) {
       if (target === 'deleted' && hasKubernetesCode(error, 404)) return;
       throw error;
     }
-    if (options.uid && pod.metadata?.uid !== options.uid) throw new Error(`Pod ${name} was replaced while waiting for ${target}.`);
+    if (options.uid && pod.metadata?.uid !== options.uid)
+      throw new Error(`Pod ${name} was replaced while waiting for ${target}.`);
     if (target === 'ready') {
-      if (pod.metadata?.deletionTimestamp || ['Failed', 'Succeeded'].includes(pod.status?.phase ?? '')) {
+      if (
+        pod.metadata?.deletionTimestamp ||
+        ['Failed', 'Succeeded'].includes(pod.status?.phase ?? '')
+      ) {
         throw new Error(`Pod ${name} terminated before becoming ready.`);
       }
-      if (isPodReady(pod)) return;
+      if (isPodReady(pod))
+        return {
+          startedAt: pod.metadata?.creationTimestamp || new Date(),
+        };
     }
     const remaining = deadline - now();
     if (remaining > 0) await sleep(Math.min(interval, remaining));

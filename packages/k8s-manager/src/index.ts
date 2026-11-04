@@ -3,6 +3,7 @@ import { QUEUE_NAME } from 'shared/const/redis';
 import { env } from './env';
 import { startCleanupWorker } from './k8s';
 import { processLabJob } from './lab-processor';
+import { startLabDispatcher } from './lab-dispatcher';
 // import { listPods } from './k8s';
 
 const worker = new Worker(
@@ -28,3 +29,4 @@ worker.on('error', (err) => {
 });
 
 void startCleanupWorker(10_000);
+void startLabDispatcher();

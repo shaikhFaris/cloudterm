@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { db } from 'shared/db/drizzle';
-import { findOwnedLabStatus, insertWorkspace } from './lab-repository';
-import type { Job, JobProgress } from 'bullmq';
+import { enqueueLab } from 'shared/redis/lab-jobs';
+import { findActiveLab, findOwnedLabStatus, insertWorkspace, lockLabOwner } from './lab-repository';
+import { findLabRequest, rememberLabRequest } from './lab-idempotency';
 import { ApiError } from 'shared/utils/ApiError';
 
 export const getLabStatus = async (userId: string, labId: string) => {
@@ -9,41 +11,39 @@ export const getLabStatus = async (userId: string, labId: string) => {
   return lab;
 };
 
-export const createLab = async (userId: string) => {
-  // Status reads need only PostgreSQL; connect to the queue when creating a lab.
-  const { labQueue } = await import('shared/redis/Queue');
-  let job: Job<any, any, string, JobProgress> | undefined;
-  try {
-    return await db.transaction(async (tx) => {
-      const res = await insertWorkspace(tx, userId);
-      if (!res) throw new Error('Internal Error in k8s manager');
+export const getActiveLab = (userId: string) => findActiveLab(userId);
 
-      job = await labQueue.add(
-        'create-lab',
-        { userId, workspaceId: res.id },
-        {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 1_000 },
-          removeOnComplete: true,
-          removeOnFail: false,
-        },
-      );
-
-      return {
-        labId: res.id,
-        jobId: job.id,
-        status: 'queued' as const,
-      };
-    });
-  } catch (error) {
-    // Await the transaction so commit failures also attempt queue cleanup.
-    if (job?.id) {
-      try {
-        await labQueue.remove(job.id);
-      } catch (cleanupError) {
-        console.error('Failed to remove lab job after transaction failure.', cleanupError);
-      }
+export const createLab = async (userId: string, idempotencyKey: string) => {
+  const lab = await db.transaction(async (tx) => {
+    // Serialize creates across tabs and gateway instances, even after Redis expiry.
+    if (!await lockLabOwner(tx, userId)) throw new ApiError(401, 'User not authenticated.');
+    const previousId = await findLabRequest(userId, idempotencyKey);
+    if (previousId) {
+      const previousLab = await findOwnedLabStatus(userId, previousId, tx);
+      if (previousLab) return previousLab;
     }
-    throw error;
+
+    const active = await findActiveLab(userId, tx);
+    if (active) {
+      await rememberLabRequest(userId, idempotencyKey, active.labId);
+      return active;
+    }
+
+    // Reuse a reservation left by an aborted transaction rather than changing IDs.
+    const workspace = await insertWorkspace(tx, userId, previousId ?? randomUUID());
+    if (!workspace) throw new ApiError(500, 'Unable to create lab.');
+    await rememberLabRequest(userId, idempotencyKey, workspace.id);
+    return { labId: workspace.id, status: workspace.status };
+  });
+
+  // Commit first so a fast worker can see the row. The manager also dispatches
+  // queued rows to recover a crash or Redis outage at this boundary.
+  if (lab.status === 'queued') {
+    try {
+      await enqueueLab(userId, lab.labId);
+    } catch {
+      throw new ApiError(503, 'Your lab is queued. Please retry to check its progress.');
+    }
   }
+  return { ...lab, jobId: lab.labId };
 };

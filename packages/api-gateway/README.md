@@ -2,10 +2,15 @@
 
 ## Labs
 
-Both lab endpoints require the existing access and refresh cookies.
+All lab endpoints require the existing access and refresh cookies and return
+`Cache-Control: no-store`.
 
-- `POST /api/v1/labs/create` with an empty JSON object returns HTTP 202 and
-  `{ "labId": "<workspace UUID>", "jobId": "<queue job ID>", "status": "queued" }`.
+- `POST /api/v1/labs/create` requires an empty JSON object and an `Idempotency-Key`
+  header containing a UUID. It returns HTTP 202 for a queued workspace or 200 for
+  an existing running/deleted workspace, with
+  `{ "labId": "<workspace UUID>", "jobId": "<workspace UUID>", "status": "queued" }`.
+- `GET /api/v1/labs/active` returns the user's queued/running lab as
+  `{ "labId": "<workspace UUID>", "status": "queued" }`, or JSON `null`.
 - `GET /api/v1/labs/:labId/status` returns HTTP 200 and
   `{ "labId": "<workspace UUID>", "status": "queued" }` with `Cache-Control: no-store`.
 
@@ -15,10 +20,34 @@ The Kubernetes manager persists lifecycle changes; the status request does not q
 Kubernetes or BullMQ. A malformed UUID returns 400. Missing labs and labs belonging
 to another user both return 404. Database failures propagate as server errors.
 
-Creation currently enqueues inside a database transaction, with retries and
-best-effort queue cleanup if committing fails. PostgreSQL and Redis do not share
-a transaction: workers can race the commit, and a process crash can bypass cleanup.
-A transactional outbox is still needed for guaranteed delivery across these failures.
+Redis stores each user/key-to-lab mapping for 30 seconds. During that window,
+retrying the same key returns the same lab. After expiry, a request can create a
+fresh lab once the previous lab is deleted. A fresh intentional creation in the
+frontend uses a new key. Keys are scoped to users, validated, and normalized to lowercase.
+The TTL starts when the mapping is stored, independently of pod startup or deletion;
+the database's active-lab check continues to enforce one lab after Redis expiry.
+Redis errors fail creation closed with 503. The frontend preserves its key across
+network errors and authentication retries.
+
+Creation locks the user's database row before checking for an active lab. Even
+different keys, concurrent tabs, and expired Redis records cannot bypass the
+one-queued-or-running-lab limit through this endpoint. Existing active labs are
+returned rather than rejected. No schema migration is needed; other future
+workspace writers must use the same owner lock. This does not repair duplicate
+active rows created before this change.
+
+The database transaction commits before enqueueing, and the workspace UUID is
+the BullMQ job ID. The manager periodically dispatches committed queued rows,
+recovering API crashes or Redis enqueue outages without creating another row.
+If enqueueing fails, creation returns 503 while preserving queued intent; the
+same key is safe to retry. Running/deleted labs are never re-enqueued by creation.
+
+The new-lab page restores active labs after reload, polls a queued lab every two
+seconds and a running lab every five seconds, and stops that lab's polling once
+deleted. An active-lab check every five seconds discovers creations in other tabs.
+Polling pauses in the background and stops when the component unmounts. A pending
+request or active lab disables the start button; backend authorization and locking
+remain authoritative.
 
 ## GitHub OAuth
 
