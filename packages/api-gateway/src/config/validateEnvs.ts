@@ -12,6 +12,7 @@ export const envSchema = z.object({
   JWT_REFRESH_TOKEN_SECRET: z.string().min(1),
   JWT_REFRESH_TOKEN_TIME_IN_MS: z.coerce.number().int().positive(),
   COOKIE_DOMAIN: z.string(),
+  FRONTEND_ORIGIN: z.url({ protocol: /^https?$/ }).optional(),
   GITHUB_CLIENT_ID: z.string().min(1),
   GITHUB_CLIENT_SECRET: z.string().min(1),
   GITHUB_CALLBACK_URL: z.url({ protocol: /^https?$/ }),

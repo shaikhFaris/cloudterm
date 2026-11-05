@@ -49,7 +49,36 @@ Polling pauses in the background and stops when the component unmounts. A pendin
 request or active lab disables the start button; backend authorization and locking
 remain authoritative.
 
-## GitHub OAuth
+## Terminal Socket.IO authorization
+
+The gateway's Socket.IO endpoint accepts browser connections only from
+`FRONTEND_ORIGIN` (an exact frontend origin). If unset, it uses the origin of
+`GITHUB_SUCCESS_REDIRECT_URL`, or `http://localhost:3000` in development.
+Production requires a configured HTTPS origin. The browser connects using
+`withCredentials: true` and `auth: { labId }`; JWTs stay in HttpOnly cookies.
+Use a Socket.IO-aware reverse proxy or the gateway URL for this connection.
+
+Connection middleware verifies both JWTs, checks the active database session,
+then validates the lab UUID, authenticated ownership, running state, and expiry.
+It emits `terminal:authorized` with `{ labId, expiresAt }` only after authorization.
+The socket is bound to that lab. It cannot select another workspace through input.
+Lab creation retains its database owner lock and one-active-lab rule; multiple
+tabs can connect to the same lab and never create another workspace.
+
+Handshake failures use `connect_error` with `data.code`: `AUTH_REQUIRED`,
+`INVALID_LAB_ID`, `LAB_NOT_FOUND`, `LAB_NOT_READY`, `LAB_EXPIRED`, or
+`SERVICE_UNAVAILABLE`. The client may refresh over HTTP once for `AUTH_REQUIRED`
+and reconnect explicitly; Socket.IO does not run Axios interceptors.
+
+Established sockets close at session/lab expiry and on logout in this gateway.
+Database session and lab checks run every five seconds to detect remote logout
+or early deletion; database errors close the connection. Reconnects always repeat
+authorization. Disconnect cleanup removes timers, session listeners, and credentials.
+
+Terminal exec and manager forwarding remain scaffolds. Input/resize requests
+receive `terminal:error` with `TERMINAL_NOT_IMPLEMENTED`, and raw input is not logged.
+
+## GitHub OAuth setup
 
 Create a GitHub OAuth App and set these environment variables for the gateway:
 
