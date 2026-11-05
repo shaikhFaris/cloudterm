@@ -15,6 +15,7 @@ import jwt, { JsonWebTokenError } from 'jsonwebtoken';
 import { generateToken, type JWTPayload } from 'shared/utils/jwt';
 import { env } from '../../config/validateEnvs';
 import type { Transaction } from '../../types/db';
+import { sessionEvents, sessionEventKey } from './session-events';
 
 export const signIn = async (email: string, password: string) => {
   await db.transaction(async (tx) => {
@@ -84,6 +85,7 @@ export const createSession = async (tx: Transaction, user: typeof usersTable.$in
 
 export const logout = async (refreshToken: string) => {
   await deleteRefreshToken(refreshToken);
+  sessionEvents.emit(sessionEventKey(refreshToken));
 };
 
 export const refresh = async (refreshToken: string) => {

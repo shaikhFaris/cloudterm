@@ -27,5 +27,10 @@ spec:
             value: redis-stack-container
           - name: REDIS_PORT
             value: "6379"
+          - name: SHARED_KEY
+            valueFrom:
+              secretKeyRef:
+                name: cloudterm-secrets
+                key: SHARED_KEY
           - name: NODE_EXTRA_CA_CERTS
             value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
