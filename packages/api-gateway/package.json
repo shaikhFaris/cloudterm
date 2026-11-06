@@ -25,6 +25,7 @@
     "morgan": "^1.12.1",
     "shared": "workspace:*",
     "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.4",
     "zod": "^4.6.5"
   }
 }
