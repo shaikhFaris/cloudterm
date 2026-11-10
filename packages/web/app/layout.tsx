@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Abel, Playfair_Display, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import '@xterm/xterm/css/xterm.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryProvider } from '@/components/query-provider';
 

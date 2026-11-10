@@ -2,6 +2,30 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Terminal input demo
+
+On `/dashboard/new-labs`, a running lab shows an xterm terminal. It connects
+directly to `NEXT_PUBLIC_GATEWAY_URL` (default `http://localhost:3500`) using
+Socket.IO with credentials and `auth: { labId }`. Set this public URL in
+`packages/web/.env.local` if the browser reaches the gateway at another address,
+then restart Next.js. In production it must be a browser-accessible HTTPS URL.
+The existing `/api/v1` rewrite does not proxy this socket connection.
+
+Set the gateway's `FRONTEND_ORIGIN` to the frontend origin, such as
+`http://localhost:3000`, and use the same hostname for login and the gateway so
+the session cookies are sent. Authentication and running-lab authorization are
+still required. An expired access token triggers one HTTP refresh and reconnect.
+
+Click in the terminal and type or paste. Each input chunk emits
+`terminal:input` with `{ type: 'chars', input: string }`, and the **gateway process
+console** prints `terminal:input` and that payload. Enter is `"\r"`, and control
+keys are sent intact. Large pastes are split below the gateway's message limit.
+The terminal echoes input locally for this demo; it does not execute commands
+or render remote shell output yet. Resize only fits the frontend display.
+The gateway logs input even if k8s-manager is unavailable and preserves forwarding
+when its existing manager connection succeeds. Debug input logs may include
+anything typed or pasted; remove them when connecting a real shell.
+
 ### GitHub sign-in
 
 The `/login` page offers GitHub sign-in only. It uses Axios through a TanStack Query mutation to request

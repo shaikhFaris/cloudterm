@@ -108,6 +108,33 @@ function connect(url: string, cookie = credentials().cookie, handshake: unknown 
 }
 
 describe('Socket.IO server', () => {
+  test('logs terminal input immediately even when the manager is unavailable', async () => {
+    const gateway = await import('../src/ws');
+    const manager = spyOn(gateway, 'connectK8sManager').mockRejectedValue(new Error('Manager offline'));
+    const warning = spyOn(console, 'warn').mockImplementation(() => {});
+    const payload = { type: 'chars', input: 'ls\r\x03🙂' };
+    let received!: () => void;
+    const logged = new Promise<void>((resolve) => { received = resolve; });
+    const output = spyOn(console, 'log').mockImplementation((event, data) => {
+      if (event === 'terminal:input') {
+        expect(data).toEqual(payload);
+        received();
+      }
+    });
+    try {
+      const { wsUrl } = await startServer();
+      const { client } = await connect(wsUrl);
+      client.send(`42${JSON.stringify(['terminal:input', payload])}`);
+      await logged;
+      expect(client.readyState).toBe(WebSocket.OPEN);
+      expect(manager).toHaveBeenCalledTimes(1);
+    } finally {
+      manager.mockRestore();
+      warning.mockRestore();
+      output.mockRestore();
+    }
+  });
+
   test('accepts multiple clients and removes a disconnected client independently', async () => {
     const { io, wsUrl, url } = await startServer();
     const connected = await Promise.all(Array.from({ length: 3 }, () => connect(wsUrl)));

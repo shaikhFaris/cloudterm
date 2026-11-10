@@ -16,20 +16,22 @@ export async function registerConnectionHandlers(socket: Socket): Promise<void> 
   const access = terminalAccess.get(socket);
   if (!access) throw new ApiError(400, 'Session expired');
 
-  let client: ClientSocket;
-  try {
-    client = await connectK8sManager();
-    console.log('connected to k8s-manager');
-  } catch (error) {
-    socket.disconnect(true);
-    return;
-  }
+  let client: ClientSocket | undefined;
+
+  socket.on('disconnect', () => {
+    client?.disconnect();
+    terminalAccess.delete(socket);
+  });
 
   socket.on('terminal:input', (data: TerminalType) => {
     try {
-      console.log(data);
       const valid = terminalSchema.parse(data);
-      client.emit('terminal:input', data);
+      console.log({
+        raw: JSON.stringify(data.input),
+        length: data.input.length,
+        hex: Buffer.from(data.input).toString('hex'),
+      });
+      if (client?.connected) client.emit('terminal:input', valid);
     } catch (error) {
       // handle errors in socket.emit
       console.error(error);
@@ -38,9 +40,9 @@ export async function registerConnectionHandlers(socket: Socket): Promise<void> 
 
   socket.on('terminal:output', (data: TerminalType) => {
     try {
-      console.log(data);
       const valid = terminalSchema.parse(data);
-      client.emit('terminal:output', data);
+      console.log(data);
+      if (client?.connected) client.emit('terminal:output', valid);
     } catch (error) {
       // handle errors in socket.emit
       console.error(error);
@@ -50,4 +52,16 @@ export async function registerConnectionHandlers(socket: Socket): Promise<void> 
   socket.on('error', (error) => {
     console.error(error.message);
   });
+
+  // Gateway input logging works independently of the downstream manager.
+  try {
+    client = await connectK8sManager();
+    if (!socket.connected) {
+      client.disconnect();
+      return;
+    }
+    console.log('connected to k8s-manager');
+  } catch {
+    console.warn('k8s-manager unavailable; terminal input is being logged by the gateway only');
+  }
 }
