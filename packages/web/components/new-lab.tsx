@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useLabs } from '@/hooks/use-labs';
 import { LabCountdown } from '@/components/lab-countdown';
+import { LabTerminal } from '@/components/lab-terminal';
 
 export function NewLab({ userId }: { userId: string }) {
   const { lab, active, status, mutation, canCreate, start, checkAgain } = useLabs(userId);
@@ -66,6 +67,7 @@ export function NewLab({ userId }: { userId: string }) {
           <p className="flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck className="size-4" aria-hidden="true" />Only one queued or running lab is allowed per account.</p>
         </CardContent>
       </Card>
+      {running && <LabTerminal key={lab.labId} labId={lab.labId} />}
     </div>
   );
 }

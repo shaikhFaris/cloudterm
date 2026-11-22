@@ -18,8 +18,6 @@ spec:
       containers:
       - name: k8s-manager-container
         image: k8s-manager:0.2
-        # ports:
-        # - containerPort: 80
         env:
           - name: DB_URL
             value: postgres://postgres:pass123@cloudterm-db:5432/mydb
