@@ -15,6 +15,7 @@ export const envSchema = z
     COOKIE_DOMAIN: z.string(),
     FRONTEND_ORIGIN: z.url({ protocol: /^https?$/ }).optional(),
     GITHUB_CLIENT_ID: z.string().min(1),
+    SHARED_KEY: z.string().min(1),
     K8S_MANAGER_URL: z.url(),
     GITHUB_CLIENT_SECRET: z.string().min(1),
     GITHUB_CALLBACK_URL: z.url({ protocol: /^https?$/ }),

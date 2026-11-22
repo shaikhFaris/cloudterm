@@ -22,6 +22,8 @@ export function registerConnectionHandlers(socket: Socket): void {
         length: data.input.length,
         hex: Buffer.from(data.input).toString('hex'),
       });
+      console.log('Recieved input in k8s-service: ', valid);
+
       if (socket?.connected) socket.emit('terminal:input', valid);
     } catch (error) {
       // handle errors in socket.emit

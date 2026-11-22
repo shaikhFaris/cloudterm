@@ -17,7 +17,7 @@ spec:
       serviceAccountName: cloudterm-worker
       containers:
       - name: k8s-manager-container
-        image: k8s-manager:0.2
+        image: k8s-manager:0.3
         env:
           - name: DB_URL
             value: postgres://postgres:pass123@cloudterm-db:5432/mydb

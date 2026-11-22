@@ -36,10 +36,12 @@ export function createSocketServer(
 }
 
 export const connectK8sManager = (): Promise<Socket> => {
+  console.log(process.env.SHARED_KEY);
+
   return new Promise((resolve, reject) => {
     const socket = io(process.env.K8S_MANAGER_URL!, {
       auth: {
-        apiKey: process.env.SHARED_KEY,
+        apiKey: process.env.SHARED_KEY!,
       },
       transports: ['websocket'],
       reconnection: true,
