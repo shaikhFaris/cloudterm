@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:api-gateway": "bun --watch ./packages/api-gateway/src/index.ts"
+    "dev:api-gateway": "bun --watch ./packages/api-gateway/src/index.ts",
+    "deploy:k8s-manager": "bun run scripts/deploy-k8s-manager.ts"
   }
 }

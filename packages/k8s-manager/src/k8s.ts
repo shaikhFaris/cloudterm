@@ -18,7 +18,8 @@ import { ACTIVE_DEADLINE_SECONDS } from './constants';
 
 const kc = buildKubeConfig();
 
-const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+export const k8sApi = kc.makeApiClient(k8s.CoreV1Api);
+export const exec = new k8s.Exec(kc);
 
 function belongsToWorkspace(pod: k8s.V1Pod, userId: string, workspaceId: string): boolean {
   return (
