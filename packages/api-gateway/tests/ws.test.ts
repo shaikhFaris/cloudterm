@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test, type Mock } from 'bun:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import type { Server, ServerOptions } from 'socket.io';
+import { Server, type ServerOptions } from 'socket.io';
+import { io as connectSocket } from 'socket.io-client';
 import logger from 'shared/utils/logger';
 import jwt from 'jsonwebtoken';
 Object.assign(process.env, {
   NODE_ENV: 'dev', PORT: '3001', COOKIE_DOMAIN: 'localhost', FRONTEND_ORIGIN: 'http://localhost:3000',
+  K8S_MANAGER_URL: 'http://127.0.0.1:1', SHARED_KEY: 'test-manager-key',
   JWT_ACCESS_TOKEN_SECRET: 'test-access-secret', JWT_ACCESS_TOKEN_TIME_IN_MS: '60000',
   JWT_REFRESH_TOKEN_SECRET: 'test-refresh-secret', JWT_REFRESH_TOKEN_TIME_IN_MS: '120000',
   DB_URL: 'postgresql://test:test@localhost:5432/test',
@@ -108,6 +110,43 @@ function connect(url: string, cookie = credentials().cookie, handshake: unknown 
 }
 
 describe('Socket.IO server', () => {
+  test('relays the manager’s initial shell output to the browser unchanged', async () => {
+    const endpoint = createServer();
+    const manager = new Server(endpoint);
+    const output = { type: 'chars', input: '\x1b[32mready🙂\x1b[0m\r\n$ ' };
+    manager.on('connection', (socket) => socket.emit('terminal:output', output));
+    endpoint.listen(0, '127.0.0.1');
+    await once(endpoint, 'listening');
+    const address = endpoint.address();
+    if (!address || typeof address === 'string') throw new Error('Missing manager test port');
+
+    const originalUrl = process.env.K8S_MANAGER_URL;
+    process.env.K8S_MANAGER_URL = `http://127.0.0.1:${address.port}`;
+    try {
+      const { io, url } = await startServer();
+      const browser = connectSocket(url, {
+        autoConnect: false,
+        transports: ['websocket'],
+        auth: { labId },
+        extraHeaders: { Origin: origin, Cookie: credentials().cookie },
+        reconnection: false,
+      });
+      try {
+        const received = once(browser, 'terminal:output', { signal: AbortSignal.timeout(2_000) });
+        browser.connect();
+        expect(await received).toEqual([output]);
+      } finally {
+        io.disconnectSockets(true);
+        browser.disconnect();
+      }
+    } finally {
+      process.env.K8S_MANAGER_URL = originalUrl;
+      manager.disconnectSockets(true);
+      endpoint.closeAllConnections();
+      await new Promise<void>((resolve) => manager.close(() => resolve()));
+    }
+  });
+
   test('logs terminal input immediately even when the manager is unavailable', async () => {
     const gateway = await import('../src/ws');
     const manager = spyOn(gateway, 'connectK8sManager').mockRejectedValue(new Error('Manager offline'));

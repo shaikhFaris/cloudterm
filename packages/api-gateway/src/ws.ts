@@ -35,9 +35,13 @@ export function createSocketServer(
   return io;
 }
 
-export const connectK8sManager = (workspaceId: string): Promise<Socket> => {
+export const connectK8sManager = (
+  workspaceId: string,
+  onTerminalOutput: (output: unknown) => void,
+): Promise<Socket> => {
   return new Promise((resolve, reject) => {
     const socket = io(process.env.K8S_MANAGER_URL!, {
+      autoConnect: false,
       auth: {
         apiKey: process.env.SHARED_KEY!,
         workspaceId,
@@ -47,6 +51,7 @@ export const connectK8sManager = (workspaceId: string): Promise<Socket> => {
       timeout: 5000,
     });
 
+    socket.on('terminal:output', onTerminalOutput);
     socket.once('connect', () => {
       resolve(socket);
     });
@@ -55,5 +60,6 @@ export const connectK8sManager = (workspaceId: string): Promise<Socket> => {
       socket.disconnect();
       reject(error);
     });
+    socket.connect();
   });
 };

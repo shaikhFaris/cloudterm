@@ -42,19 +42,6 @@ export async function registerConnectionHandlers(socket: Socket): Promise<void> 
     }
   });
 
-  socket.on('terminal:output', (data: TerminalType) => {
-    console.log(data);
-
-    try {
-      const valid = terminalSchema.parse(data);
-      console.log('Recieved data from k8s-manager', data);
-      if (client?.connected) client.emit('terminal:output', valid);
-    } catch (error) {
-      // handle errors in socket.emit
-      console.error(error);
-    }
-  });
-
   socket.on('error', (error) => {
     console.error(error.message);
   });
@@ -62,13 +49,15 @@ export async function registerConnectionHandlers(socket: Socket): Promise<void> 
   // Gateway input logging works independently of the downstream manager.
   try {
     console.log('workspaceId: ' + access.labId);
+    client = await connectK8sManager(access.labId, (output) => {
+      if (socket.connected) socket.emit('terminal:output', output);
+    });
+    console.log('connected to k8s-manager');
 
-    client = await connectK8sManager(access.labId);
     if (!socket.connected) {
       client.disconnect();
       return;
     }
-    console.log('connected to k8s-manager');
   } catch (error) {
     console.warn('k8s-manager unavailable; terminal input is being logged by the gateway only');
     console.error(error);

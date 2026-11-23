@@ -46,7 +46,11 @@ export async function registerConnectionHandlers(socket: Socket): Promise<void> 
   // Kubernetes Pod → Browser
   stdout.on('data', (chunk: Buffer) => {
     console.log(chunk.toString());
-    if (socket?.connected) socket.emit('terminal:output', chunk.toString());
+    if (socket?.connected)
+      socket.emit('terminal:output', {
+        type: 'chars',
+        input: chunk.toString(),
+      });
   });
   // TODO: Register terminal session, input, and resize handlers here.
 

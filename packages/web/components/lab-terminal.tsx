@@ -37,9 +37,6 @@ export function LabTerminal({ labId }: { labId: string }) {
       terminal.loadAddon(fit);
       terminal.open(container.current);
       fit.fit();
-      terminal.writeln('Gateway input demo — typed input is logged on the gateway.');
-      terminal.writeln('Local echo is enabled. Shell execution is not connected here.');
-      terminal.writeln('');
 
       const socket = io(gatewayUrl, {
         autoConnect: false,
@@ -59,17 +56,11 @@ export function LabTerminal({ labId }: { labId: string }) {
             type: 'chars',
             input: characters.slice(offset, offset + 1024).join(''),
           });
-          console.log(Array.from(data, (c) => c.charCodeAt(0).toString(16)));
         }
-        // Diagnostic local echo only. Control sequences still reach the gateway intact.
-        if (data === '\r') terminal.write('\r\n');
-        else if (data === '\x7f') {
-          if (terminal.buffer.active.cursorX > 0) terminal.write('\b \b');
-        } else if (!data.includes('\x1b')) {
-          terminal.write(
-            data.replace(/[^\x20-\x7e\u0080-\uffff\r\n]/g, '').replace(/\r\n|\r|\n/g, '\r\n'),
-          );
-        }
+      });
+
+      socket.on('terminal:output', (output: { input?: unknown } | null) => {
+        if (typeof output?.input === 'string') terminal.write(output.input);
       });
 
       socket.on('connect', () => {
