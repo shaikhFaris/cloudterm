@@ -17,6 +17,7 @@ services:
       GITHUB_SUCCESS_REDIRECT_URL: ${GITHUB_SUCCESS_REDIRECT_URL:-http://localhost:3000/dashboard}
       GITHUB_FAILURE_REDIRECT_URL: ${GITHUB_FAILURE_REDIRECT_URL:-http://localhost:3000/login}
       K8S_MANAGER_URL: ${K8S_MANAGER_URL}
+      SHARED_KEY: ${SHARED_KEY}
     ports:
       - '3500:3500'
     depends_on:

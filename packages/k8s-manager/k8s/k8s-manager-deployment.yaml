@@ -16,19 +16,19 @@ spec:
     spec:
       serviceAccountName: cloudterm-worker
       containers:
-      - name: k8s-manager-container
-        image: k8s-manager:0.2
-        env:
-          - name: DB_URL
-            value: postgres://postgres:pass123@cloudterm-db:5432/mydb
-          - name: REDIS_HOST
-            value: redis-stack-container
-          - name: REDIS_PORT
-            value: "6379"
-          - name: SHARED_KEY
-            valueFrom:
-              secretKeyRef:
-                name: cloudterm-secrets
-                key: SHARED_KEY
-          - name: NODE_EXTRA_CA_CERTS
-            value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        - name: k8s-manager-container
+          image: k8s-manager:0.5
+          env:
+            - name: DB_URL
+              value: postgres://postgres:pass123@cloudterm-db:5432/mydb
+            - name: REDIS_HOST
+              value: redis-stack-container
+            - name: REDIS_PORT
+              value: '6379'
+            - name: SHARED_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cloudterm-secrets
+                  key: SHARED_KEY
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt

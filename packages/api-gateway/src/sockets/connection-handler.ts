@@ -8,9 +8,10 @@ import { type Socket as ClientSocket } from 'socket.io-client';
 export const terminalSchema = z.object({
   type: z.literal(['chars', 'resize']),
   input: z.string(),
+  workspaceId: z.string(),
 });
 
-type TerminalType = z.infer<typeof terminalSchema>;
+type TerminalType = Omit<z.infer<typeof terminalSchema>, 'workspaceId'>;
 
 export async function registerConnectionHandlers(socket: Socket): Promise<void> {
   const access = terminalAccess.get(socket);
@@ -25,7 +26,10 @@ export async function registerConnectionHandlers(socket: Socket): Promise<void> 
 
   socket.on('terminal:input', (data: TerminalType) => {
     try {
-      const valid = terminalSchema.parse(data);
+      const valid = terminalSchema.parse({
+        ...data,
+        workspaceId: access.labId,
+      });
       console.log({
         raw: JSON.stringify(data.input),
         length: data.input.length,
@@ -39,9 +43,11 @@ export async function registerConnectionHandlers(socket: Socket): Promise<void> 
   });
 
   socket.on('terminal:output', (data: TerminalType) => {
+    console.log(data);
+
     try {
       const valid = terminalSchema.parse(data);
-      console.log(data);
+      console.log('Recieved data from k8s-manager', data);
       if (client?.connected) client.emit('terminal:output', valid);
     } catch (error) {
       // handle errors in socket.emit
@@ -55,13 +61,16 @@ export async function registerConnectionHandlers(socket: Socket): Promise<void> 
 
   // Gateway input logging works independently of the downstream manager.
   try {
-    client = await connectK8sManager();
+    console.log('workspaceId: ' + access.labId);
+
+    client = await connectK8sManager(access.labId);
     if (!socket.connected) {
       client.disconnect();
       return;
     }
     console.log('connected to k8s-manager');
-  } catch {
+  } catch (error) {
     console.warn('k8s-manager unavailable; terminal input is being logged by the gateway only');
+    console.error(error);
   }
 }

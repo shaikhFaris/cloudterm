@@ -35,11 +35,12 @@ export function createSocketServer(
   return io;
 }
 
-export const connectK8sManager = (): Promise<Socket> => {
+export const connectK8sManager = (workspaceId: string): Promise<Socket> => {
   return new Promise((resolve, reject) => {
     const socket = io(process.env.K8S_MANAGER_URL!, {
       auth: {
-        apiKey: process.env.SHARED_KEY,
+        apiKey: process.env.SHARED_KEY!,
+        workspaceId,
       },
       transports: ['websocket'],
       reconnection: true,
