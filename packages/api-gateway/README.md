@@ -60,7 +60,6 @@ Use a Socket.IO-aware reverse proxy or the gateway URL for this connection.
 
 Connection middleware verifies both JWTs, checks the active database session,
 then validates the lab UUID, authenticated ownership, running state, and expiry.
-It emits `terminal:authorized` with `{ labId, expiresAt }` only after authorization.
 The socket is bound to that lab. It cannot select another workspace through input.
 Lab creation retains its database owner lock and one-active-lab rule; multiple
 tabs can connect to the same lab and never create another workspace.
@@ -75,8 +74,11 @@ Database session and lab checks run every five seconds to detect remote logout
 or early deletion; database errors close the connection. Reconnects always repeat
 authorization. Disconnect cleanup removes timers, session listeners, and credentials.
 
-Terminal exec and manager forwarding remain scaffolds. Input/resize requests
-receive `terminal:error` with `TERMINAL_NOT_IMPLEMENTED`, and raw input is not logged.
+The gateway relays `terminal:ready` after the manager opens the exec stream.
+`terminal:input` accepts character chunks while the shell is ready. The gateway
+returns `terminal:output` chunks and closes the connection after `terminal:exit`
+or `terminal:error`. Terminal contents and handshake credentials are excluded
+from terminal logs.
 
 ## GitHub OAuth setup
 

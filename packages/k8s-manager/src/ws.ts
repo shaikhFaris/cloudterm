@@ -8,7 +8,6 @@ export function createSocketServer(
   options: Partial<ServerOptions> = {},
 ): Server {
   const io = new Server(httpServer, options);
-  // TODO: Authenticate the gateway before accepting terminal connections.
   console.log('Socket server created and ready for connections');
 
   io.use(authMiddleware);

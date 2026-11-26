@@ -1,96 +1,97 @@
 import type { Socket } from 'socket.io';
 import logger from 'shared/utils/logger';
 import z from 'zod';
-import { exec, k8sApi } from '../k8s';
 import { PassThrough } from 'node:stream';
+import { exec } from '../k8s';
+import { NAMESPACE } from '../k8sConfig';
 
-export const terminalSchema = z.object({
-  type: z.literal(['chars', 'resize']),
-  input: z.string(),
-  workspaceId: z.string(),
-});
-
-type TerminalType = z.infer<typeof terminalSchema>;
+const workspaceSchema = z.uuid();
+const inputSchema = z.object({ type: z.literal('chars'), input: z.string(), workspaceId: workspaceSchema });
 
 export async function registerConnectionHandlers(socket: Socket): Promise<void> {
-  logger.info(`Socket connected: ${socket.id}`);
-
-  const workspaceId = socket.handshake.auth?.workspaceId;
-
-  if (!workspaceId) {
-    console.log(socket.handshake.auth);
-
-    console.error('workspaceId invalid');
-    throw new Error('workspaceId invalid');
+  const workspace = workspaceSchema.safeParse(socket.handshake.auth.workspaceId);
+  if (!workspace.success) {
+    logger.warn('Rejected terminal connection with an invalid workspace ID');
+    socket.emit('terminal:error', { code: 'TERMINAL_START_FAILED' });
+    socket.disconnect(true);
+    return;
   }
 
+  const workspaceId = workspace.data;
   const stdin = new PassThrough();
-  const stdout = new PassThrough();
-  const stderr = new PassThrough();
+  const stdout = new PassThrough().setEncoding('utf8');
+  let ws: Awaited<ReturnType<typeof exec.exec>> | undefined;
+  let closed = false;
 
-  const ws = await exec.exec(
-    'cloudterm',
-    `workspace-${workspaceId}`,
-    'terminal',
-    ['/bin/sh'],
-    stdout,
-    stderr,
-    stdin,
-    true /* tty */,
-    (status) => {
-      console.log('Exited with status:');
-      console.log(JSON.stringify(status, null, 2));
-    },
-  );
+  function abort(code: 'TERMINAL_START_FAILED' | 'TERMINAL_STREAM_FAILED') {
+    if (closed || !socket.connected) return;
+    logger.warn(`Terminal closed: ${socket.id} (${code})`);
+    socket.emit('terminal:error', { code });
+    socket.disconnect(true);
+  }
 
-  // Kubernetes Pod → Browser
-  stdout.on('data', (chunk: Buffer) => {
-    console.log(chunk.toString());
-    if (socket?.connected)
-      socket.emit('terminal:output', {
-        type: 'chars',
-        input: chunk.toString(),
-      });
+  function exit(exitCode: number | null) {
+    if (closed || !socket.connected) return;
+    socket.emit('terminal:exit', { exitCode });
+    socket.disconnect(true);
+  }
+
+  socket.once('disconnect', () => {
+    closed = true;
+    stdin.destroy();
+    stdout.destroy();
+    ws?.close();
+    logger.info(`Terminal disconnected: ${socket.id}`);
   });
-  // TODO: Register terminal session, input, and resize handlers here.
+  socket.on('error', () => abort('TERMINAL_STREAM_FAILED'));
+  stdin.on('error', () => abort('TERMINAL_STREAM_FAILED'));
+  stdout.on('error', () => abort('TERMINAL_STREAM_FAILED'));
 
-  socket.on('terminal:input', (data: TerminalType) => {
-    try {
-      const valid = terminalSchema.parse(data);
-      console.log({
-        raw: JSON.stringify(data.input),
-        length: data.input.length,
-        hex: Buffer.from(data.input).toString('hex'),
-      });
-      console.log('Recieved input in k8s-service: ', valid);
-
-      // ks8-manager → Kubernetes Pod
-      stdin.write(valid.input);
-    } catch (error) {
-      // handle errors in socket.emit
-      console.error(error);
+  stdout.on('data', (chunk: string) => {
+    if (!closed && socket.connected) {
+      socket.emit('terminal:output', { type: 'chars', input: chunk });
     }
   });
 
-  socket.on('disconnect', (reason) => {
-    // TODO: Close the associated terminal session.
-    logger.info(`Socket disconnected: ${socket.id} (${reason})`);
-    stdin.destroy();
-    stdout.destroy();
-    ws.close();
+  socket.on('terminal:input', (payload: unknown) => {
+    if (closed || !ws || ws.readyState !== ws.OPEN) return;
+    const result = inputSchema.safeParse(payload);
+    if (result.success && result.data.workspaceId === workspaceId) stdin.write(result.data.input);
   });
 
-  ws.on('close', () => {
-    stdin.destroy();
-    stdout.destroy();
-    stderr.destroy();
-  });
+  try {
+    ws = await exec.exec(
+      NAMESPACE, `workspace-${workspaceId}`, 'terminal', ['/bin/sh'],
+      stdout, null, stdin, true,
+      (status) => {
+        if (status.status === 'Success') {
+          exit(0);
+          return;
+        }
 
-  ws.on('error', (error) => {
-    logger.error('Kubernetes Exec WebSocket error', error);
-  });
+        const value = status.details?.causes?.find((cause) => cause.reason === 'ExitCode')?.message;
+        const exitCode = value === undefined ? NaN : Number(value);
+        if (Number.isSafeInteger(exitCode) && exitCode >= 0) exit(exitCode);
+        else abort(ws ? 'TERMINAL_STREAM_FAILED' : 'TERMINAL_START_FAILED');
+      },
+    );
 
-  socket.on('error', (error: Error) => {
-    logger.error(`Socket error: ${socket.id}`, error);
-  });
+    ws.on('error', () => abort('TERMINAL_STREAM_FAILED'));
+    ws.once('close', (code) => {
+      if (code === 1000) exit(null);
+      else abort('TERMINAL_STREAM_FAILED');
+    });
+    if (closed) {
+      ws.close();
+      return;
+    }
+    if (ws.readyState !== ws.OPEN) {
+      abort('TERMINAL_START_FAILED');
+      return;
+    }
+    logger.info(`Terminal ready: ${socket.id}`);
+    socket.emit('terminal:ready');
+  } catch {
+    abort('TERMINAL_START_FAILED');
+  }
 }
