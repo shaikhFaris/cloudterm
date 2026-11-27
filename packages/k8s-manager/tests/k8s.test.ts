@@ -3,6 +3,8 @@ import { test, type Mock } from 'bun:test';
 import type { CoreV1Api, V1Pod, V1PodList } from '@kubernetes/client-node';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
+import { EventEmitter } from 'node:events';
+import type { Socket } from 'socket.io';
 
 process.env.DB_URL ??= 'postgresql://test:test@127.0.0.1:5432/test';
 const namespace = 'test-cloudterm';
@@ -70,6 +72,34 @@ beforeEach(() => {
   spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(() => mock.restore());
+
+test('closes an exec WebSocket that opens after the terminal disconnects', async () => {
+  const { registerConnectionHandlers } = await import('../src/sockets/connection-handler');
+  const close = mock(() => {});
+  const ws = Object.assign(new EventEmitter(), { close, readyState: 1, OPEN: 1 });
+  type ExecSocket = Awaited<ReturnType<typeof lifecycle.exec.exec>>;
+  let openExec!: (value: ExecSocket) => void;
+  const pendingExec = new Promise<ExecSocket>((resolve) => { openExec = resolve; });
+  const startExec = spyOn(lifecycle.exec, 'exec').mockReturnValueOnce(pendingExec);
+  const socket = Object.assign(new EventEmitter(), {
+    id: 'test-terminal',
+    connected: true,
+    handshake: { auth: { workspaceId } },
+  });
+  const ready = mock(() => {});
+  socket.on('terminal:ready', ready);
+
+  const starting = registerConnectionHandlers(socket as unknown as Socket);
+  socket.connected = false;
+  socket.emit('disconnect');
+  const [, , , , stdout, , stdin] = startExec.mock.calls[0]!;
+  expect(stdout?.destroyed).toBe(true);
+  expect(stdin?.destroyed).toBe(true);
+  openExec(ws as unknown as ExecSocket);
+  await starting;
+  expect(close).toHaveBeenCalledTimes(1);
+  expect(ready).not.toHaveBeenCalled();
+});
 
 describe('workspace provisioning', () => {
   test('updates the original owned workspace only after its pod is Ready', async () => {

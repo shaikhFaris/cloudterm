@@ -3,7 +3,7 @@ import { Server, type ServerOptions } from 'socket.io';
 import { registerConnectionHandlers } from './sockets/connection-handler';
 import { authenticateSocket, authorizeLabSocket } from './sockets/authorization';
 import { env } from './config/validateEnvs';
-import { io, type Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
 
 export function createSocketServer(
   httpServer: HttpServer,
@@ -35,25 +35,12 @@ export function createSocketServer(
   return io;
 }
 
-export const connectK8sManager = (workspaceId: string): Promise<Socket> => {
-  return new Promise((resolve, reject) => {
-    const socket = io(process.env.K8S_MANAGER_URL!, {
-      auth: {
-        apiKey: process.env.SHARED_KEY!,
-        workspaceId,
-      },
-      transports: ['websocket'],
-      reconnection: true,
-      timeout: 5000,
-    });
-
-    socket.once('connect', () => {
-      resolve(socket);
-    });
-
-    socket.once('connect_error', (error) => {
-      socket.disconnect();
-      reject(error);
-    });
+export function createK8sManagerSocket(workspaceId: string) {
+  return io(env.K8S_MANAGER_URL, {
+    autoConnect: false,
+    auth: { apiKey: env.SHARED_KEY, workspaceId },
+    transports: ['websocket'],
+    reconnection: false,
+    timeout: 5_000,
   });
-};
+}

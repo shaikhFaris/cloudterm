@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test, type Mock } from 'bun:test';
 import { createServer } from 'node:http';
-import { once } from 'node:events';
-import type { Server, ServerOptions } from 'socket.io';
+import { EventEmitter, once } from 'node:events';
+import { Server, type ServerOptions } from 'socket.io';
+import { io as connectSocket } from 'socket.io-client';
 import logger from 'shared/utils/logger';
 import jwt from 'jsonwebtoken';
 Object.assign(process.env, {
   NODE_ENV: 'dev', PORT: '3001', COOKIE_DOMAIN: 'localhost', FRONTEND_ORIGIN: 'http://localhost:3000',
+  K8S_MANAGER_URL: 'http://127.0.0.1:1', SHARED_KEY: 'test-manager-key',
   JWT_ACCESS_TOKEN_SECRET: 'test-access-secret', JWT_ACCESS_TOKEN_TIME_IN_MS: '60000',
   JWT_REFRESH_TOKEN_SECRET: 'test-refresh-secret', JWT_REFRESH_TOKEN_TIME_IN_MS: '120000',
   DB_URL: 'postgresql://test:test@localhost:5432/test',
@@ -32,12 +34,22 @@ const servers: Server[] = [];
 const httpServers: ReturnType<typeof createServer>[] = [];
 const clients: WebSocket[] = [];
 let infoLog: Mock<typeof logger.info>;
+let manager: Server;
+let managerEndpoint: ReturnType<typeof createServer>;
+const unavailableManagerUrl = 'http://127.0.0.1:1';
 
-beforeEach(() => {
+beforeEach(async () => {
   env.FRONTEND_ORIGIN = origin;
   checkAuth = spyOn(auth, 'checkAuth').mockResolvedValue({ id: userId, email: 'test@example.com' });
   findLab = spyOn(labs, 'findOwnedLabStatus').mockResolvedValue({ labId, status: 'running', expiresAt: new Date(Date.now() + 60_000) });
   infoLog = spyOn(logger, 'info').mockImplementation(() => logger);
+  managerEndpoint = createServer();
+  manager = new Server(managerEndpoint);
+  managerEndpoint.listen(0, '127.0.0.1');
+  await new Promise<void>((resolve) => managerEndpoint.once('listening', resolve));
+  const address = managerEndpoint.address();
+  if (!address || typeof address === 'string') throw new Error('Missing manager test port');
+  env.K8S_MANAGER_URL = `http://127.0.0.1:${address.port}`;
 });
 
 afterEach(async () => {
@@ -50,6 +62,10 @@ afterEach(async () => {
     httpServers.splice(0).forEach((server) => server.closeAllConnections());
     await Promise.all(servers.splice(0).map((io) => new Promise<void>((resolve) => io.close(() => resolve()))));
   } finally {
+    manager.disconnectSockets(true);
+    managerEndpoint.closeAllConnections();
+    await new Promise<void>((resolve) => manager.close(() => resolve()));
+    env.K8S_MANAGER_URL = unavailableManagerUrl;
     infoLog.mockRestore();
     checkAuth.mockRestore();
     findLab.mockRestore();
@@ -107,31 +123,78 @@ function connect(url: string, cookie = credentials().cookie, handshake: unknown 
   });
 }
 
+function createBrowser(url: string) {
+  const browser = connectSocket(url, {
+    autoConnect: false,
+    transports: ['websocket'],
+    auth: { labId },
+    extraHeaders: { Origin: origin, Cookie: credentials().cookie },
+    reconnection: false,
+  });
+  const events = new EventEmitter();
+  for (const event of ['connect', 'disconnect', 'terminal:ready', 'terminal:output', 'terminal:exit', 'terminal:error']) {
+    browser.on(event, (...args: unknown[]) => events.emit(event, ...args));
+  }
+  return { browser, events };
+}
+
 describe('Socket.IO server', () => {
-  test('logs terminal input immediately even when the manager is unavailable', async () => {
-    const gateway = await import('../src/ws');
-    const manager = spyOn(gateway, 'connectK8sManager').mockRejectedValue(new Error('Manager offline'));
-    const warning = spyOn(console, 'warn').mockImplementation(() => {});
-    const payload = { type: 'chars', input: 'ls\r\x03🙂' };
-    let received!: () => void;
-    const logged = new Promise<void>((resolve) => { received = resolve; });
-    const output = spyOn(console, 'log').mockImplementation((event, data) => {
-      if (event === 'terminal:input') {
-        expect(data).toEqual(payload);
-        received();
-      }
-    });
+  test('relays readiness and shell output, then closes both connections on exit', async () => {
+    const output = { type: 'chars', input: '\x1b[32mready\x1b[0m\r\n$ ' };
+    const managerConnected = once(manager, 'connection');
+    const { io, url } = await startServer();
+    const { browser, events } = createBrowser(url);
+    const wait = { signal: AbortSignal.timeout(2_000) };
+
     try {
-      const { wsUrl } = await startServer();
-      const { client } = await connect(wsUrl);
-      client.send(`42${JSON.stringify(['terminal:input', payload])}`);
-      await logged;
-      expect(client.readyState).toBe(WebSocket.OPEN);
-      expect(manager).toHaveBeenCalledTimes(1);
+      const connected = once(events, 'connect', wait);
+      browser.connect();
+      await connected;
+      const [downstream] = await managerConnected;
+      const receivedInputs: unknown[] = [];
+      downstream.on('terminal:input', (payload: unknown) => receivedInputs.push(payload));
+
+      const earlyInput = once(io.sockets.sockets.get(browser.id!)!, 'terminal:input', wait);
+      browser.emit('terminal:input', { type: 'chars', input: 'before-ready' });
+      await earlyInput;
+      const receivedOutput = once(events, 'terminal:output', wait);
+      const ready = once(events, 'terminal:ready', wait);
+      downstream.emit('terminal:output', output);
+      downstream.emit('terminal:ready');
+      expect(await receivedOutput).toEqual([output]);
+      await ready;
+
+      const receivedInput = once(downstream, 'terminal:input', wait);
+      browser.emit('terminal:input', { type: 'chars', input: 'pwd\r', workspaceId: 'another-lab' });
+      expect(await receivedInput).toEqual([{ type: 'chars', input: 'pwd\r', workspaceId: labId }]);
+      expect(receivedInputs).toHaveLength(1);
+
+      const exited = once(events, 'terminal:exit', wait);
+      const browserClosed = once(events, 'disconnect', wait);
+      const managerClosed = once(downstream, 'disconnect', wait);
+      downstream.emit('terminal:exit', { exitCode: 7 });
+      expect(await exited).toEqual([{ exitCode: 7 }]);
+      await Promise.all([browserClosed, managerClosed]);
     } finally {
-      manager.mockRestore();
-      warning.mockRestore();
-      output.mockRestore();
+      io.disconnectSockets(true);
+      browser.disconnect();
+    }
+  });
+
+  test('reports a safe startup error when the manager is unavailable', async () => {
+    env.K8S_MANAGER_URL = unavailableManagerUrl;
+    const { io, url } = await startServer();
+    const { browser, events } = createBrowser(url);
+    const wait = { signal: AbortSignal.timeout(2_000) };
+    try {
+      const failed = once(events, 'terminal:error', wait);
+      const disconnected = once(events, 'disconnect', wait);
+      browser.connect();
+      expect(await failed).toEqual([{ code: 'TERMINAL_START_FAILED' }]);
+      await disconnected;
+    } finally {
+      io.disconnectSockets(true);
+      browser.disconnect();
     }
   });
 

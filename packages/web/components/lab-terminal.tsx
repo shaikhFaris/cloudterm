@@ -6,12 +6,21 @@ import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api-client';
 
 const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL ?? 'http://localhost:3500';
+const terminalErrors: Record<string, string> = {
+  AUTH_REQUIRED: 'Your terminal session has ended. Reconnect to check your sign-in.',
+  LAB_EXPIRED: 'Your lab has expired.',
+  LAB_NOT_FOUND: 'Your lab is no longer available.',
+  LAB_NOT_READY: 'Your lab is no longer running.',
+  SERVICE_UNAVAILABLE: 'Could not verify access to the terminal. Try reconnecting.',
+  TERMINAL_START_FAILED: 'Could not start the shell. Try reconnecting.',
+  TERMINAL_STREAM_FAILED: 'The shell connection was lost. Try reconnecting.',
+};
 
 export function LabTerminal({ labId }: { labId: string }) {
   const container = useRef<HTMLDivElement>(null);
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState('Connecting…');
-  const [connected, setConnected] = useState(false);
+  const [canReconnect, setCanReconnect] = useState(false);
 
   useEffect(() => {
     let disposed = false;
@@ -37,9 +46,6 @@ export function LabTerminal({ labId }: { labId: string }) {
       terminal.loadAddon(fit);
       terminal.open(container.current);
       fit.fit();
-      terminal.writeln('Gateway input demo — typed input is logged on the gateway.');
-      terminal.writeln('Local echo is enabled. Shell execution is not connected here.');
-      terminal.writeln('');
 
       const socket = io(gatewayUrl, {
         autoConnect: false,
@@ -50,8 +56,19 @@ export function LabTerminal({ labId }: { labId: string }) {
         timeout: 10_000,
       });
       let refreshed = false;
+      let ready = false;
+      let finished = false;
+
+      function finish(message: string) {
+        finished = true;
+        ready = false;
+        terminal.options.disableStdin = true;
+        setStatus(message);
+        setCanReconnect(true);
+      }
+
       const input = terminal.onData((data) => {
-        if (!socket.connected) return;
+        if (!ready || !socket.connected) return;
         // Bound paste chunks to well below the gateway's 16 KiB message limit.
         const characters = Array.from(data);
         for (let offset = 0; offset < characters.length; offset += 1024) {
@@ -59,29 +76,25 @@ export function LabTerminal({ labId }: { labId: string }) {
             type: 'chars',
             input: characters.slice(offset, offset + 1024).join(''),
           });
-          console.log(Array.from(data, (c) => c.charCodeAt(0).toString(16)));
-        }
-        // Diagnostic local echo only. Control sequences still reach the gateway intact.
-        if (data === '\r') terminal.write('\r\n');
-        else if (data === '\x7f') {
-          if (terminal.buffer.active.cursorX > 0) terminal.write('\b \b');
-        } else if (!data.includes('\x1b')) {
-          terminal.write(
-            data.replace(/[^\x20-\x7e\u0080-\uffff\r\n]/g, '').replace(/\r\n|\r|\n/g, '\r\n'),
-          );
         }
       });
 
+      socket.on('terminal:output', (output: { input?: unknown } | null) => {
+        if (typeof output?.input === 'string') terminal.write(output.input);
+      });
+
       socket.on('connect', () => {
+        if (!ready && !finished) setStatus('Starting shell…');
+      });
+      socket.on('terminal:ready', () => {
+        if (finished) return;
+        ready = true;
         terminal.options.disableStdin = false;
-        setConnected(true);
-        setStatus('Connected to gateway');
+        setStatus('Shell connected');
         terminal.focus();
       });
       socket.on('disconnect', () => {
-        terminal.options.disableStdin = true;
-        setConnected(false);
-        setStatus('Disconnected. Reconnect to continue.');
+        if (!finished) finish('Disconnected. Reconnect to continue.');
       });
       socket.on('connect_error', async (error: Error & { data?: { code?: string } }) => {
         const code = error.data?.code;
@@ -93,18 +106,22 @@ export function LabTerminal({ labId }: { labId: string }) {
             if (!disposed) socket.connect();
             return;
           } catch {
-            if (!disposed) setStatus('Session expired. Sign in again to use the terminal.');
+            if (!disposed) finish('Could not renew your session. Reconnect or sign in again.');
             return;
           }
         }
-        setStatus(
+        finish(
           code
-            ? `Connection rejected: ${code}`
+            ? (terminalErrors[code] ?? 'The gateway rejected the terminal connection.')
             : 'Cannot reach gateway. Check its URL and frontend origin.',
         );
       });
-      socket.on('terminal:error', (error: { code?: string }) => {
-        setStatus(`Terminal error: ${error?.code ?? 'UNKNOWN'}`);
+      socket.on('terminal:error', (error: { code?: string } | null) => {
+        finish(terminalErrors[error?.code ?? ''] ?? 'The terminal closed unexpectedly.');
+      });
+      socket.on('terminal:exit', (result: { exitCode: number | null } | null) => {
+        const code = result?.exitCode;
+        finish(typeof code === 'number' ? `Shell exited with code ${code}.` : 'Shell exited.');
       });
 
       const observer = new ResizeObserver(() => fit.fit());
@@ -120,7 +137,10 @@ export function LabTerminal({ labId }: { labId: string }) {
     }
 
     void open().catch(() => {
-      if (!disposed) setStatus('Could not initialize the terminal.');
+      if (!disposed) {
+        setStatus('Could not initialize the terminal.');
+        setCanReconnect(true);
+      }
     });
     return () => {
       disposed = true;
@@ -137,12 +157,13 @@ export function LabTerminal({ labId }: { labId: string }) {
             {status}
           </p>
         </div>
-        {!connected && (
+        {canReconnect && (
           <Button
             variant="outline"
             size="sm"
             onClick={() => {
               setStatus('Connecting…');
+              setCanReconnect(false);
               setAttempt((value) => value + 1);
             }}
           >
