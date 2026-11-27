@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  labels:
+    app: api-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+        - name: api-gateway-container
+          image: cloudterm-api-gateway
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: api-gateway-secrets
+          env:
+            - name: REDIS_HOST
+              value: redis-stack-container
+            - name: REDIS_PORT
+              value: '6379'
+            - name: DB_URL
+              value: postgres://postgres:pass123@cloudterm-db:5432/mydb
